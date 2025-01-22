@@ -11,7 +11,7 @@ class MapPublisherNode(Node):
         self.publisher_ = self.create_publisher(Image, 'map_image', 10)
         self.timer = self.create_timer(1.0, self.publish_map)
         self.bridge = CvBridge()
-        self.map_path = os.path.join(os.path.dirname(__file__), 'blank_map.png')
+        self.map_path = os.path.join(os.path.dirname(__file__), 'simple_map.png')
         self.get_logger().info(f'Map path set to: {self.map_path}')
 
     def publish_map(self):

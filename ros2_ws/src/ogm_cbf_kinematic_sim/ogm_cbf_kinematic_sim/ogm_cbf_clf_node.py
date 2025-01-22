@@ -54,6 +54,7 @@ class MobileRobot(Node):
         #self.callback_group_async = ReentrantCallbackGroup()
         self.vehicle_info = self.create_subscription(Odometry, "odom", self.vehicle_odom_callback, 1)#, callback_group = self.callback_group_async)
         self.subscription_2 = self.create_subscription(Image,'map_image',self.listener_callback_map, 1)#, callback_group = self.callback_group_async)
+        
         self.publisher_image_ = self.create_publisher(Image, '/cbf_image', 1)#, callback_group = self.callback_group_async)
         self.contour_timer_ = self.create_timer(1.0, self.publish_image)#, callback_group = self.callback_group_async)
         self.bridge = CvBridge()
@@ -111,9 +112,9 @@ class MobileRobot(Node):
     def publish_velocity(self):
         """Publish the velocity as a Twist message."""
         msg = Twist()
-        msg.linear.x = self.linear_velocity*np.cos(self.yaw)
-        msg.linear.y = self.linear_velocity*np.sin(self.yaw)
-        msg.angular.z =self.angular_velocity
+        msg.linear.x = 0.0#self.linear_velocity*np.cos(self.yaw)
+        msg.linear.y = -0.1#self.linear_velocity*np.sin(self.yaw)
+        msg.angular.z =0.0#self.angular_velocity
         self.twist_publisher_.publish(msg)
         #self.get_logger().info(f'Published cmd_vel: linear x={msg.linear.x}, linear y = {msg.linear.y}, angular={msg.angular.z}')
 
@@ -238,7 +239,9 @@ class MobileRobot(Node):
         
             #--------now we calculate gradient of sdf--------------------------------
 
-            edges_y, edges_x = np.gradient(phi_s) # getting gradient of phi_s numerically    
+            edges_y, edges_x = np.gradient(phi_s) # getting gradient of phi_s numerically  
+            # numpy coordinate by defualt is x down and y right 
+            # my notations are in cartesian space
             # edges_y: first axis is row in np.array terms, gradient with respect to rows is -y of cartesian space (increases downwards)
             # edges_x: second axis is column in np.array terms, gradient with respect to columns is x of cartesian space (increases rightwards)
 
@@ -272,7 +275,7 @@ class MobileRobot(Node):
         
         # coordinate of the gradients: this will give gradient in local frame which y is forward and x is right (same as in right hand coordinate in ros-carla)
 
-        
+            
     def vehicle_odom_callback(self, msg):
         """
         Receive information of ego vehicle from carla
@@ -332,7 +335,8 @@ class MobileRobot(Node):
             msg = Float64MultiArray()
             timestamp = self.time_map.to_msg()
             
-            data = [float(timestamp.sec)] + [float(timestamp.nanosec)] + self.cbf_array + [float(0.0)] 
+            #data = [float(timestamp.sec)] + [float(timestamp.nanosec)] + self.cbf_array + [float(0.0)] 
+            data = self.cbf_array + [float(0.0)] + [float(self.dsdf_x_normalized[int(self.y), int(self.x)])] + [float(self.dsdf_y_normalized[int(self.y), int(self.x)])]
             #print(f"------cbf array is {self.cbf_array}-----------")
             msg.data = data
             self.publisher_cbf_.publish(msg)   
