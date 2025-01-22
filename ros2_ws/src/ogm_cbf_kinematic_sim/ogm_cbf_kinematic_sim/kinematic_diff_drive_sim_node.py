@@ -15,7 +15,8 @@ class KinematicDiffDriveSimNode(Node):
         self.update_rate = self.get_parameter('update_rate').value
 
         # Robot state: x, y, and yaw (orientation)
-        self.state = {'x': 12.5, 'y': 10.0, 'yaw': -np.pi/2 }
+        #self.state = {'x': 12.5, 'y': 10.0, 'yaw': -np.pi/2 }
+        self.state = {'x': 10.0, 'y': 18.0, 'yaw': -np.pi/2 }
 
         # Linear and angular velocities
         self.linear_velocity_x = self.linear_velocity_y = 0.0
@@ -88,11 +89,11 @@ class KinematicDiffDriveSimNode(Node):
 
     @staticmethod
     def normalize_angle(angle):
-        """Normalize an angle to the range [-pi, pi]."""
-        while angle > math.pi:
-            angle -= 2.0 * math.pi
-        while angle < -math.pi:
-            angle += 2.0 * math.pi
+        """Normalize an angle to the range [0, 2*pi]."""
+        angle = angle % (2.0 * np.pi) # Wrap to [0, 2*pi]
+        if angle < 0.0:
+            angle += 2.0 * np.pi
+        
         return angle
 
 

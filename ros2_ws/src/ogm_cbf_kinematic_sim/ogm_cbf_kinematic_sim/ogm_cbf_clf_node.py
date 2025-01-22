@@ -29,6 +29,24 @@ matplotlib.use('Agg')
 vel_prev = 0
 dPsi_prev = 0
 
+def normalize_angle(angle):
+        """Normalize an angle to the range [0, 2*pi]."""
+        angle = angle % (2.0 * np.pi) # Wrap to [0, 2*pi]
+        if angle < 0.0:
+            angle += 2.0 * np.pi
+        
+        return angle
+
+def normalize_difference(angle):
+        """Normalize an angle to the range [-pi, pi]."""
+        angle = angle % (2.0 * np.pi) # Wrap to [0, 2*pi]
+        if angle < 0.0:
+            angle += 2.0 * np.pi
+        if angle > np.pi:
+            angle -= 2.0 * np.pi
+        
+        return angle
+
 class MobileRobot(Node):
     def __init__(self, state=[0,0,0], timestep=0.1):
 
@@ -64,8 +82,9 @@ class MobileRobot(Node):
         self.Uref = [0.0, 0.0]
 
         self.sdf = np.zeros((400, 400))
-        self.dsdf_x = np.zeros((400, 400))
-        self.dsdf_y = np.zeros((400, 400))
+        self.dsdf_x = self.dsdf_x_normalized = np.zeros((400, 400))
+        self.dsdf_y = self.dsdf_y_normalized = np.zeros((400, 400))
+        self.grad_sdf_normalized = self.grad_sdf = np.array([self.dsdf_x, self.dsdf_y])
         self.ddsdf_xx = self.ddsdf_yy = self.ddsdf_xy = self.ddsdf_yx= 0.0
 
         self.fig, (self.ax) = plt.subplots(1,1)
@@ -92,9 +111,9 @@ class MobileRobot(Node):
     def publish_velocity(self):
         """Publish the velocity as a Twist message."""
         msg = Twist()
-        msg.linear.x = 0.0#self.linear_velocity*np.cos(self.yaw)
-        msg.linear.y = 0.0#self.linear_velocity*np.sin(self.yaw)
-        msg.angular.z =0.0 #self.angular_velocity
+        msg.linear.x = self.linear_velocity*np.cos(self.yaw)
+        msg.linear.y = self.linear_velocity*np.sin(self.yaw)
+        msg.angular.z =self.angular_velocity
         self.twist_publisher_.publish(msg)
         #self.get_logger().info(f'Published cmd_vel: linear x={msg.linear.x}, linear y = {msg.linear.y}, angular={msg.angular.z}')
 
@@ -123,8 +142,7 @@ class MobileRobot(Node):
         """
         publishing velocity commands (u_cmd) on ros
         """
-        #self.linear_velocity, self.angular_velocity = self.apply_cbf() ##calling the main control loop
-        #self.publish_cbf()
+        
         msg = TwistStamped()
         msg.header.stamp = self.get_clock().now().to_msg()#self.time_map.to_msg()
 
@@ -195,13 +213,9 @@ class MobileRobot(Node):
 
             map = self.bridge.imgmsg_to_cv2(msg)
 
-            ret,map = cv2.threshold(map, 127, 255, cv2.THRESH_BINARY) # binarzing the map
+            _,map = cv2.threshold(map, 127, 255, cv2.THRESH_BINARY) # binarzing the map
             map = np.asarray(map)
-            #print("I came here to see the map-----------------bb")
-            
-            im_width, _= map.shape
-            
-            #map = map[0:int(im_width/2), :] # since we move only forward, only upper half of map is used
+
             
             """
             now we construct phi_s:
@@ -213,41 +227,46 @@ class MobileRobot(Node):
             map = np.uint8(map)
             map_not = np.uint8(map_not)
 
-            phi_unsafe = cv2.distanceTransform(map, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1)
-            phi_s_unsafe = 3.0*np.tanh(0.01*phi_unsafe) # phi_s = a*tanh(b*phi) (adding non-linearity)
-            
-            phi_safe = cv2.distanceTransform(map_not, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1)
+            phi_safe = cv2.distanceTransform(map, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1) # black is obstacle, closest distance to black is being calculated
             phi_s_safe = 3.0*np.tanh(0.01*phi_safe) # phi_s = a*tanh(b*phi) (adding non-linearity)
+            
+            phi_unsafe = cv2.distanceTransform(map_not, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1) # in map_not safe_set is black, closest distance to that is calculated
+            phi_s_unsafe = 3.0*np.tanh(0.01*phi_unsafe) # phi_s = a*tanh(b*phi) (adding non-linearity) 
 
             phi_s_unsafe = -phi_s_unsafe # inside obstacles are negative
             phi_s = phi_s_unsafe + phi_s_safe # phi_s is constructed
-            phi_s = -phi_s # inside obstacles are negative
+        
+            #--------now we calculate gradient of sdf--------------------------------
 
-            #phi_s = phi_safe
-            
-
-            edges_y, edges_x = np.gradient(phi_s) # getting gradient of phi_s numerically
+            edges_y, edges_x = np.gradient(phi_s) # getting gradient of phi_s numerically    
+            # edges_y: first axis is row in np.array terms, gradient with respect to rows is -y of cartesian space (increases downwards)
+            # edges_x: second axis is column in np.array terms, gradient with respect to columns is x of cartesian space (increases rightwards)
 
             self.sdf = phi_s
-            self.dsdf_x = edges_x
-            self.dsdf_y = -edges_y
+            self.dsdf_x = edges_x           # No adjustment needed for x
+            self.dsdf_y = -edges_y          # Flip the sign to align with Cartesian y-up
 
-            # normalizing dSDF
-            dsdf_x_hat = self.dsdf_x / (np.sqrt(self.dsdf_x**2 + self.dsdf_y**2))
-            dsdf_y_hat = self.dsdf_y / (np.sqrt(self.dsdf_x**2 + self.dsdf_y**2))
+            # normalizing gradient vector of SDF. we use normalized gradient version in dot product
+            self.grad_sdf = np.array([self.dsdf_x, self.dsdf_y])
 
-            im_width, im_height = self.sdf.shape
+            self.dsdf_x_normalized = self.dsdf_x / (np.sqrt(self.dsdf_x**2 + self.dsdf_y**2)) 
+            self.dsdf_y_normalized = self.dsdf_y / (np.sqrt(self.dsdf_x**2 + self.dsdf_y**2))
+            
+            self.grad_sdf_normalized = np.array([self.dsdf_x_normalized, self.dsdf_y_normalized])
+
+            # note that np.linalg.norm will give incorrect result since it normalizes the whole matrix
+            # but we want each gradient vector to be normalized by its own norm (not the norm of the whole matrix)
 
             # getting the ddSDF as is used in h_dot
-            edges_y, edges_x = np.gradient(dsdf_x_hat)
-            self.ddsdf_xx = edges_x[int(self.y), int(self.x)] # I only save ddsdf for where there robot is (as map is ego centeric it is fixed)
+            edges_y, edges_x = np.gradient(self.dsdf_x_normalized)
+            self.ddsdf_xx = edges_x[int(self.y), int(self.x)] # I only save ddsdf for where there robot is
             self.ddsdf_xy = -edges_y[int(self.y),int(self.x)]
 
-            edges_y, edges_x = np.gradient(dsdf_y_hat)
+            edges_y, edges_x = np.gradient(self.dsdf_y_normalized)
             self.ddsdf_yx = edges_x[int(self.y), int(self.x)]
             self.ddsdf_yy = -edges_y[int(self.y), int(self.x)]
 
-            print(f"sdf is {self.sdf[int(self.y), int(self.x)]} and  y is {self.y} and x is {self.x} and dsdf_x is {self.dsdf_x[int(self.y), int(self.x)]} and dsdf_y is {self.dsdf_y[int(self.y), int(self.x)]}")
+            print(f"dsdf_y is {self.dsdf_y[int(self.y), int(self.x)]}")
         
 
         
@@ -348,6 +367,7 @@ class MobileRobot(Node):
 
         # target heading
         heading = -np.pi/2
+        heading = normalize_angle(heading)
         ##--------------------------------------------------------------------------------------------##
         """
         system is assumed to be a 2d differential drive:
@@ -430,7 +450,7 @@ class MobileRobot(Node):
         ## reference of control inputs
         Vref = Vmax     # linear velocity reference
         K_Wref = 0.5    # gain for calculating the angular velocity reference using a proportional controller
-        Wref = K_Wref* (heading - yaw)      # calculating the angular velocity reference using a proportional controller
+        Wref = K_Wref*  normalize_difference(heading - yaw)      # calculating the angular velocity reference using a proportional controller
 
         
 
@@ -451,7 +471,7 @@ class MobileRobot(Node):
 
         ## Lyapunov function
         # V(x) = 0.5*(x-xd)^2 + 0.5*(y-yd)^2 + 0.5*(psi-psid)^2
-        V = 0.5*(0)**2 + 0.5*(0)**2 + 0.5*(yaw - heading)**2     
+        V = 0.5*(0)**2 + 0.5*(0)**2 + 0.5*normalize_difference(yaw - heading)**2     
 
         ## making 7th row of G for the CBF constraint
         ## derivative of CBF: dh(x)/dt = (dh/dX).(dX/dt)
@@ -473,7 +493,7 @@ class MobileRobot(Node):
         ## making matrices of G and h to satisfy the CLF condition
 
         G[7][0] = 0
-        G[7][1] = (yaw - heading)
+        G[7][1] = normalize_difference(yaw - heading)
         G[7][2] = -1     # relaxation
         h[7] = -C_gamma*V**P_gamma
 
