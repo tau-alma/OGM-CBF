@@ -29,6 +29,8 @@ matplotlib.use('Agg')
 vel_prev = 0
 dPsi_prev = 0
 
+#TODO normalize_angle and normalize_difference and pose_to_pixel functions should go to utils.py
+
 def normalize_angle(angle):
         """Normalize an angle to the range [0, 2*pi]."""
         angle = angle % (2.0 * np.pi) # Wrap to [0, 2*pi]
@@ -241,7 +243,7 @@ class MobileRobot(Node):
 
             edges_y, edges_x = np.gradient(phi_s) # getting gradient of phi_s numerically  
             # numpy coordinate by defualt is x down and y right 
-            # my notations are in cartesian space
+            # my notations are in cartesian space and I will use cartesian coordinate for CBF. Therefore I need to flip the sign of y gradient.
             # edges_y: first axis is row in np.array terms, gradient with respect to rows is -y of cartesian space (increases downwards)
             # edges_x: second axis is column in np.array terms, gradient with respect to columns is x of cartesian space (increases rightwards)
 
@@ -268,8 +270,10 @@ class MobileRobot(Node):
             edges_y, edges_x = np.gradient(self.dsdf_y_normalized)
             self.ddsdf_yx = edges_x[int(self.y), int(self.x)]
             self.ddsdf_yy = -edges_y[int(self.y), int(self.x)]
-
-            print(f"dsdf_y is {self.dsdf_y[int(self.y), int(self.x)]}")
+            
+            # now for gradients x and y are swapped and y got negative. (we moved from numpy convention(y right, x down) to pixel coordinate (x right, y down), and from there
+            # to cartesian coordinate (x right, y up). 
+            
         
 
         
@@ -306,7 +310,7 @@ class MobileRobot(Node):
         #print(f"pose is {self.x}, {self.y}")
 
         ### CBF-CLF-QP is called in this callback each time we recieve new state from odom callback     
-        self.controller(self.sdf[int(self.y), int(self.x)], self.dsdf_x[int(self.y), int(self.x)], self.dsdf_y[int(self.y), int(self.x)], self.yaw)
+        self.controller()
         self.publish_cbf() # publish CBF values for debugging
         self.publish_plot_twist() # publish u_cmd for debugging
         #self.publish_cmd()
@@ -343,7 +347,7 @@ class MobileRobot(Node):
         except:
             pass
 
-    def controller(self, sdf, dsdf_x, dsdf_y, yaw):
+    def controller(self):
         
         global vel_prev, dPsi_prev
 
@@ -390,53 +394,65 @@ class MobileRobot(Node):
         As a result omega (yaw_dot) will appear in h_dot
         """
         ##--------------------------------------------------------------------------------------------##
+        sdf = self.sdf[int(self.y), int(self.x)]
+        dsdf_x = self.dsdf_x[int(self.y), int(self.x)]
+        dsdf_y = self.dsdf_y[int(self.y), int(self.x)]
+        dsdf_x_normalized = self.dsdf_x_normalized[int(self.y), int(self.x)]
+        dsdf_y_normalized = self.dsdf_y_normalized[int(self.y), int(self.x)]
+        yaw = self.yaw # this should be used for CLF calculation which is indeed in cartesian coordinate
 
         # handle when derivative of sdf is nan
-        if math.isnan(dsdf_x) or math.isnan(dsdf_y):
-            dsdf_x = 0.0
-            dsdf_y = 0.0
+        if math.isnan(dsdf_x_normalized) or math.isnan(dsdf_y_normalized):
+            print("nan in gradient!")
+            dsdf_x_normalized = 0.0
+            dsdf_y_normalized = 0.0
         if math.isnan(self.ddsdf_xx) or math.isnan(self.ddsdf_xy) or math.isnan(self.ddsdf_yx) or math.isnan(self.ddsdf_yy):
+            print("nan in gradient of gradient!!")
             self.ddsdf_xx = 0.0
             self.ddsdf_xy = 0.0
             self.ddsdf_yx = 0.0
             self.ddsdf_yy = 0.0
         
-        x_vector = np.array([np.cos(yaw), np.sin(yaw)]) # heading vector of robot in ego centric map
+        x_vector = np.array([np.cos(yaw), np.sin(yaw)]) # heading vector of robot in pixel coordinate
         
-        grad_vector = np.array([dsdf_x, dsdf_y]) #gradient of phi_s in the robots pose
-        cosine_eta = np.dot(x_vector,grad_vector)/(norm(x_vector)*norm(grad_vector))
-        sine_eta = np.cross(grad_vector, x_vector)
+        sdf_normalized_grad_vector = np.array([dsdf_x_normalized, dsdf_y_normalized]) #gradient of phi_s in the robots pose
+        cosine_eta = np.dot(sdf_normalized_grad_vector, x_vector) # as both vectors are normalized cosine_eta is equal to dot_product
+        sine_eta = np.cross(sdf_normalized_grad_vector, x_vector)
+        eta = np.arctan2(sine_eta, cosine_eta)
+        #eta = np.arccos(cosine_eta)* sine_eta / np.abs(sine_eta)
 
+        eta = normalize_angle(eta)
 
-        eta = math.acos(cosine_eta)* sine_eta / np.abs(sine_eta)
+        print(f"------------------cbf yaw is {np.rad2deg(yaw)}-----------------")
 
-
-        
-        
-
-        #print(f"eta is {eta} and atan is {angle_between_vectors(x_vector, grad_vector)}")
-
-        #eta = eta - np.pi
-
-        #print(f"grad vector is {grad_vector} and x vector is {x_vector}")
-        #print(f"eta is {eta} sine eta is {np.round(sine_eta, 3)} and cosine eta is {np.round(cosine_eta, 3)}")
-        #error handling if eta is nan
+        print(f"------------------eta is {np.rad2deg(eta)}-----------------")
         if math.isnan(eta):
-           eta = 0.0
-        #-----------------------new eta calculation---------------------------------#
-        # dot_product = np.dot(grad_vector, x_vector)
-        # cross_product = np.cross(grad_vector, x_vector)
-
-        # eta = np.arctan2(cross_product, dot_product)
-        # eta = -eta
-        # sine_eta = np.sin(eta)
-        # cosine_eta = np.cos(eta)
-        # #-----------------------new eta calculation---------------------------------#
-
+            print("eta for nan!")
+            eta = 0.0
         
         
-        cbf = sdf + l_s  + (math.cos(eta)**P_alpha)*l_a
-        #print(f"------------------cbf is {self.sdf[self.x, self.y]}-----------------")
+        cbf = sdf + l_s  + (np.cos(eta))*l_a
+
+        # The derivative of the dot product of two vector-valued functions a(t) and b(t) is:
+        # d/dt [a(t) · b(t)] = a'(t) · b(t) + a(t) · b'(t)
+
+        # derivative of heading vector with respect to x
+        #dyaw_x = dyaw_t * dt_x which dyaw/dt is omega and dx/dt is v*cos(yaw)
+        dyaw_x = self.angular_velocity/ self.linear_velocity*np.cos(yaw)
+        dyaw_y = self.angular_velocity/ self.linear_velocity*np.sin(yaw) 
+        #TODO what if linear velocity is zero???
+
+        # d(cos(yaw))/dx = -sin(yaw) * dyaw_x and d(sin(yaw))/dx = cos(yaw) * dyaw_x
+        dx_vector_x = np.array([-np.sin(yaw), np.cos(yaw)])* dyaw_x
+        dx_vector_y = np.array([-np.sin(yaw), np.cos(yaw)])* dyaw_y
+
+
+        dcbf_x = dsdf_x + l_a * ( np.dot(np.array([self.ddsdf_xx, self.ddsdf_yx]), x_vector) + np.dot(sdf_normalized_grad_vector, dx_vector_x))
+        dcbf_y = dsdf_y + l_a * ( np.dot(np.array([self.ddsdf_xy, self.ddsdf_yy]), x_vector) + np.dot(sdf_normalized_grad_vector, dx_vector_y))
+
+
+        dcbf_yaw = l_a* (-np.sin(eta))
+        
         
         # debugging prints
         #print([np.round(cbf, 3), np.round(dsdf_x,3), np.round(dsdf_y,3), np.round(math.cos(eta),3)])
@@ -456,15 +472,10 @@ class MobileRobot(Node):
         K_Wref = 0.5    # gain for calculating the angular velocity reference using a proportional controller
         Wref = K_Wref*  normalize_difference(heading - yaw)      # calculating the angular velocity reference using a proportional controller
 
-        
-
         P = np.diag([Kv, Kw, Kd])
-
         q = np.array([-Kv*Vref, -Kw*Wref, 0.0])
 
-
         ## six first rows are for setting upper bounds and lower bounds
-
         G = np.array([[1.0, 0, 0],[-1.0, 0, 0],[0, 1.0, 0],[0, -1.0, 0],[0, 0, 1.0],[0, 0, -1.0],\
                     [0, 0, 0],\
                     [0, 0, 0]])
@@ -485,9 +496,10 @@ class MobileRobot(Node):
 
 
         #G[6][0] = -(((dsdf_x + l_a * np.dot(x_vector, np.array([self.ddsdf_xx, self.ddsdf_xy]))) * math.cos(yaw)) + ((dsdf_y + l_a * np.dot(x_vector, np.array([self.ddsdf_yx, self.ddsdf_yy]))) * math.sin(yaw)))
-        G[6][0] = -(((dsdf_x + l_a * np.dot(x_vector, np.array([self.ddsdf_xx, self.ddsdf_xy]))) * math.cos(yaw)) + ((dsdf_y + l_a * np.dot(x_vector, np.array([self.ddsdf_yx, self.ddsdf_yy]))) * math.sin(yaw)))
+        #G[6][0] = -(((dsdf_x + l_a * np.dot(x_vector, np.array([self.ddsdf_xx, self.ddsdf_xy]))) * math.cos(yaw)) + ((dsdf_y + l_a * np.dot(x_vector, np.array([self.ddsdf_yx, self.ddsdf_yy]))) * math.sin(yaw)))
+        G[6][0] = -1*( (dcbf_x * math.cos(yaw)) + (dcbf_y * math.sin(yaw)) )
         
-        G[6][1] = -(P_alpha*(-math.sin(eta))*math.cos(eta)**(P_alpha-1)) * l_a
+        G[6][1] = -1*dcbf_yaw
         G[6][2] = 0     # No relaxation
         h[6] = C_alpha * cbf 
 
@@ -520,20 +532,12 @@ class MobileRobot(Node):
         dPsi_prev = dPsi
 
         # saving  h and hdot+alpha(h) for plotting
-        cbf_dot_alpha_cbf = (((dsdf_x + l_a* np.dot(x_vector, np.array([self.ddsdf_xx, self.ddsdf_xy]))) * math.cos(yaw)) + ((dsdf_y + l_a* np.dot(x_vector, np.array([self.ddsdf_yx, self.ddsdf_yy]))) * math.sin(yaw)))*vel + (P_alpha*(-math.sin(eta))*l_a*math.cos(eta)**(P_alpha-1))*dPsi + (C_alpha * cbf)
+        #cbf_dot_alpha_cbf = (((dsdf_x + l_a* np.dot(x_vector, np.array([self.ddsdf_xx, self.ddsdf_xy]))) * math.cos(yaw)) + ((dsdf_y + l_a* np.dot(x_vector, np.array([self.ddsdf_yx, self.ddsdf_yy]))) * math.sin(yaw)))*vel + (P_alpha*(-math.sin(eta))*l_a*math.cos(eta)**(P_alpha-1))*dPsi + (C_alpha * cbf)
+        cbf_dot_alpha_cbf = (dcbf_x * np.cos(yaw) + dcbf_y * np.sin(yaw))*vel + dcbf_yaw*dPsi + C_alpha * cbf
         self.cbf_array = [float(cbf), float(cbf_dot_alpha_cbf)]
         self.linear_velocity = float(vel)
         self.angular_velocity = float(dPsi)
-        ##------------------------------------- Low-level Controller ---------------------------------##
-
-
-    def stop_robot(self):
-        """Publish a zero velocity command to stop the robot."""
-        msg = Twist()
-        msg.linear.x = 0.0
-        msg.angular.z = 0.0
-        self.twist_publisher_.publish(msg)
-        self.get_logger().info('---------------------Published zero velocity to stop the robot')
+       
 
 
 
