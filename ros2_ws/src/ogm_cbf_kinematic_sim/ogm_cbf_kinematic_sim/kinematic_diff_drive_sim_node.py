@@ -16,17 +16,17 @@ class KinematicDiffDriveSimNode(Node):
 
         # Robot state: x, y, and yaw (orientation)
         #self.state = {'x': 12.5, 'y': 10.0, 'yaw': -np.pi/2 }
-        self.state = {'x': 10.0, 'y': 18.0, 'yaw': -np.pi/2 }
+        self.state = {'x': 10, 'y': 19.5, 'yaw': -np.pi/2 }
 
         # Linear and angular velocities
         self.linear_velocity_x = self.linear_velocity_y = 0.0
         self.angular_velocity = 0.0
 
         # Subscribes to cmd_vel (linear and angular velocities)
-        self.create_subscription(Twist, 'cmd_vel', self.cmd_vel_callback, 10)
+        self.create_subscription(Twist, 'cmd_vel', self.cmd_vel_callback, 1)
 
         # Publishes odometry
-        self.odom_publisher = self.create_publisher(Odometry, 'odom', 10)
+        self.odom_publisher = self.create_publisher(Odometry, 'odom', 1)
 
         # Timer for simulation update
         self.last_time = time.time()

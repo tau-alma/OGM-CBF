@@ -63,7 +63,7 @@ class MobileRobot(Node):
         self.publisher_cbf_ = self.create_publisher(Float64MultiArray, '/cbf_array', 1) #, callback_group = self.callback_group_async)
         self.publisher_plot_twist_ = self.create_publisher(TwistStamped, '/plot_vel', 1)
         # Create a publisher for the cmd_vel topic
-        self.twist_publisher_ = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.twist_publisher_ = self.create_publisher(Twist, 'cmd_vel', 1)
         # Timer to publish messages at a regular interval
         self.twist_timer = self.create_timer(1.0, self.publish_velocity)  # Publish every 1 second
         #self.global_map_subscription = self.create_subscription(Image,'/map/full',self.global_map_callback,1, callback_group = self.callback_group_async)
@@ -114,9 +114,9 @@ class MobileRobot(Node):
     def publish_velocity(self):
         """Publish the velocity as a Twist message."""
         msg = Twist()
-        msg.linear.x = 0.0#self.linear_velocity*np.cos(self.yaw)
-        msg.linear.y = -0.1#self.linear_velocity*np.sin(self.yaw)
-        msg.angular.z =0.0#self.angular_velocity
+        msg.linear.x = self.linear_velocity*np.cos(self.yaw)
+        msg.linear.y = self.linear_velocity*np.sin(self.yaw)
+        msg.angular.z =self.angular_velocity
         self.twist_publisher_.publish(msg)
         #self.get_logger().info(f'Published cmd_vel: linear x={msg.linear.x}, linear y = {msg.linear.y}, angular={msg.angular.z}')
 
@@ -231,10 +231,10 @@ class MobileRobot(Node):
             map_not = np.uint8(map_not)
 
             phi_safe = cv2.distanceTransform(map, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1) # black is obstacle, closest distance to black is being calculated
-            phi_s_safe = 3.0*np.tanh(0.01*phi_safe) # phi_s = a*tanh(b*phi) (adding non-linearity)
+            phi_s_safe = 3*np.tanh(0.01*phi_safe) # phi_s = a*tanh(b*phi) (adding non-linearity)
             
             phi_unsafe = cv2.distanceTransform(map_not, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1) # in map_not safe_set is black, closest distance to that is calculated
-            phi_s_unsafe = 3.0*np.tanh(0.01*phi_unsafe) # phi_s = a*tanh(b*phi) (adding non-linearity) 
+            phi_s_unsafe = 3*np.tanh(0.01*phi_unsafe) # phi_s = a*tanh(b*phi) (adding non-linearity) 
 
             phi_s_unsafe = -phi_s_unsafe # inside obstacles are negative
             phi_s = phi_s_unsafe + phi_s_safe # phi_s is constructed
@@ -340,7 +340,8 @@ class MobileRobot(Node):
             timestamp = self.time_map.to_msg()
             
             #data = [float(timestamp.sec)] + [float(timestamp.nanosec)] + self.cbf_array + [float(0.0)] 
-            data = self.cbf_array + [float(0.0)] + [float(self.dsdf_x_normalized[int(self.y), int(self.x)])] + [float(self.dsdf_y_normalized[int(self.y), int(self.x)])]
+            #data = self.cbf_array + [float(0.0)] + [float(self.dsdf_x_normalized[int(self.y), int(self.x)])] + [float(self.dsdf_y_normalized[int(self.y), int(self.x)])]
+            data = self.cbf_array + [float(0.0)]
             #print(f"------cbf array is {self.cbf_array}-----------")
             msg.data = data
             self.publisher_cbf_.publish(msg)   
@@ -352,10 +353,10 @@ class MobileRobot(Node):
         global vel_prev, dPsi_prev
 
         ##------------------------- hyperparameters of the controller---------------------------------##
-        C_alpha = 0.6            # more conservative is value of it is less. This is alpha(.) in the paper
+        C_alpha = 0.3            # more conservative is value of it is less. This is alpha(.) in the paper
         P_alpha = 1.0           # power of cosine in cbf. do not touch this, it is always 1 for now
-        l_a = 0.25         
-        l_s = -1*l_a                  
+                
+                         
         
         Kv = 1.0
         Kw = 1.0
@@ -395,11 +396,17 @@ class MobileRobot(Node):
         """
         ##--------------------------------------------------------------------------------------------##
         sdf = self.sdf[int(self.y), int(self.x)]
-        dsdf_x = self.dsdf_x[int(self.y), int(self.x)]
-        dsdf_y = self.dsdf_y[int(self.y), int(self.x)]
+        dsdf_x = self.dsdf_x_normalized[int(self.y), int(self.x)]
+        dsdf_y = self.dsdf_y_normalized[int(self.y), int(self.x)]
         dsdf_x_normalized = self.dsdf_x_normalized[int(self.y), int(self.x)]
         dsdf_y_normalized = self.dsdf_y_normalized[int(self.y), int(self.x)]
         yaw = self.yaw # this should be used for CLF calculation which is indeed in cartesian coordinate
+
+        print(sdf, dsdf_x, dsdf_y, dsdf_x_normalized, dsdf_y_normalized)
+        
+
+        l_a =  0.25#np.sqrt(dsdf_x**2 + dsdf_y**2) 
+        l_s = -1*l_a 
 
         # handle when derivative of sdf is nan
         if math.isnan(dsdf_x_normalized) or math.isnan(dsdf_y_normalized):
@@ -422,8 +429,9 @@ class MobileRobot(Node):
         #eta = np.arccos(cosine_eta)* sine_eta / np.abs(sine_eta)
 
         eta = normalize_angle(eta)
+        
+        
 
-        print(f"------------------cbf yaw is {np.rad2deg(yaw)}-----------------")
 
         print(f"------------------eta is {np.rad2deg(eta)}-----------------")
         if math.isnan(eta):
@@ -431,27 +439,32 @@ class MobileRobot(Node):
             eta = 0.0
         
         
-        cbf = sdf + l_s  + (np.cos(eta))*l_a
+        cbf = sdf + l_s  + l_a*(np.cos(eta)**P_alpha) # CBF function
 
         # The derivative of the dot product of two vector-valued functions a(t) and b(t) is:
         # d/dt [a(t) · b(t)] = a'(t) · b(t) + a(t) · b'(t)
 
         # derivative of heading vector with respect to x
         #dyaw_x = dyaw_t * dt_x which dyaw/dt is omega and dx/dt is v*cos(yaw)
-        dyaw_x = self.angular_velocity/ self.linear_velocity*np.cos(yaw)
-        dyaw_y = self.angular_velocity/ self.linear_velocity*np.sin(yaw) 
-        #TODO what if linear velocity is zero???
+        try:
+            dyaw_x = self.angular_velocity/ self.linear_velocity*np.cos(yaw)
+            dyaw_y = self.angular_velocity/ self.linear_velocity*np.sin(yaw)
+        except:
+            print("division by zero in dyaw_x and dyaw_y")
+            dyaw_x = 0.0
+            dyaw_y = 0.0 
+        
 
         # d(cos(yaw))/dx = -sin(yaw) * dyaw_x and d(sin(yaw))/dx = cos(yaw) * dyaw_x
         dx_vector_x = np.array([-np.sin(yaw), np.cos(yaw)])* dyaw_x
         dx_vector_y = np.array([-np.sin(yaw), np.cos(yaw)])* dyaw_y
 
 
-        dcbf_x = dsdf_x + l_a * ( np.dot(np.array([self.ddsdf_xx, self.ddsdf_yx]), x_vector) + np.dot(sdf_normalized_grad_vector, dx_vector_x))
-        dcbf_y = dsdf_y + l_a * ( np.dot(np.array([self.ddsdf_xy, self.ddsdf_yy]), x_vector) + np.dot(sdf_normalized_grad_vector, dx_vector_y))
+        dcbf_x = dsdf_x + P_alpha * l_a * ( np.dot(np.array([self.ddsdf_xx, self.ddsdf_yx]), x_vector) + np.dot(sdf_normalized_grad_vector, dx_vector_x))* np.cos(eta)**(P_alpha-1)
+        dcbf_y = dsdf_y + P_alpha * l_a * ( np.dot(np.array([self.ddsdf_xy, self.ddsdf_yy]), x_vector) + np.dot(sdf_normalized_grad_vector, dx_vector_y))* np.cos(eta)**(P_alpha-1)
 
 
-        dcbf_yaw = l_a* (-np.sin(eta))
+        dcbf_yaw = P_alpha * l_a * (-np.sin(eta)) * np.cos(eta)**(P_alpha-1)
         
         
         # debugging prints
@@ -471,7 +484,7 @@ class MobileRobot(Node):
         Vref = Vmax     # linear velocity reference
         K_Wref = 0.5    # gain for calculating the angular velocity reference using a proportional controller
         Wref = K_Wref*  normalize_difference(heading - yaw)      # calculating the angular velocity reference using a proportional controller
-
+        
         P = np.diag([Kv, Kw, Kd])
         q = np.array([-Kv*Vref, -Kw*Wref, 0.0])
 
@@ -522,9 +535,9 @@ class MobileRobot(Node):
 
         ## Error handling in case of infeasibility
         except Exception as e:
-            #print("exception on optimization occured")
+            print("exception on optimization occured")
             #print(e)
-            vel, dPsi = vel_prev, dPsi_prev    # in case of infeasibility, return the previous solution
+            vel, dPsi = 0.0, 0.0    # in case of infeasibility, return the previous solution
             Delta = 0
 
         ## save current solution as the previous values
@@ -534,7 +547,9 @@ class MobileRobot(Node):
         # saving  h and hdot+alpha(h) for plotting
         #cbf_dot_alpha_cbf = (((dsdf_x + l_a* np.dot(x_vector, np.array([self.ddsdf_xx, self.ddsdf_xy]))) * math.cos(yaw)) + ((dsdf_y + l_a* np.dot(x_vector, np.array([self.ddsdf_yx, self.ddsdf_yy]))) * math.sin(yaw)))*vel + (P_alpha*(-math.sin(eta))*l_a*math.cos(eta)**(P_alpha-1))*dPsi + (C_alpha * cbf)
         cbf_dot_alpha_cbf = (dcbf_x * np.cos(yaw) + dcbf_y * np.sin(yaw))*vel + dcbf_yaw*dPsi + C_alpha * cbf
-        self.cbf_array = [float(cbf), float(cbf_dot_alpha_cbf)]
+        cbf_dot = (dcbf_x * np.cos(yaw) + dcbf_y * np.sin(yaw))*vel + dcbf_yaw*dPsi
+        alpha_cbf = C_alpha * cbf
+        self.cbf_array = [float(cbf), float(cbf_dot_alpha_cbf), float(cbf_dot), float(alpha_cbf)]
         self.linear_velocity = float(vel)
         self.angular_velocity = float(dPsi)
        
