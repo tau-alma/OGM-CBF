@@ -18,6 +18,7 @@ from std_msgs.msg import Float64MultiArray
 from geometry_msgs.msg import TwistStamped, Twist
 from time import monotonic
 import os
+import csv
 
 ####################
 # This code is the implementation of OGM-CBF in CARLA simulator (link to paper: https://arxiv.org/abs/2405.10703)
@@ -69,6 +70,10 @@ class MobileRobot(Node):
         #self.global_map_subscription = self.create_subscription(Image,'/map/full',self.global_map_callback,1, callback_group = self.callback_group_async)
         
 
+        self.start_time = self.get_clock().now().nanoseconds
+        
+        
+       
         # initializing class variables
 
         self.x = 0.0
@@ -107,6 +112,17 @@ class MobileRobot(Node):
         self.counter = 0.0
         self.recieved_map = False
         self.map = None
+
+        self.file_path = "cbf_data.csv"
+
+        print("--------------------------before open csv")
+        
+        # Create or overwrite the file and write the header
+        with open(self.file_path, mode="w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(["Time (s)", "CBF Array[0]", "CBF Array[1]"])  # CSV header
+        print("---------------------------after open csv")
+
 
 
         
@@ -231,11 +247,11 @@ class MobileRobot(Node):
             map_not = np.uint8(map_not)
 
             phi_safe = cv2.distanceTransform(map, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1) # black is obstacle, closest distance to black is being calculated
-            phi_s_safe =phi_safe#3*np.tanh(0.01*phi_safe)# phi_s = a*tanh(b*phi) (adding non-linearity)
+            phi_s_safe = 3*phi_safe#3*np.tanh(0.01*phi_safe)# phi_s = a*tanh(b*phi) (adding non-linearity)
             #phi_s_safe = 0.25*(1/(1 + np.exp(-0.05*phi_safe)) - 0.5)
             
             phi_unsafe = cv2.distanceTransform(map_not, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1) # in map_not safe_set is black, closest distance to that is calculated
-            phi_s_unsafe = phi_unsafe#3*np.tanh(0.01*phi_unsafe) # phi_s = a*tanh(b*phi) (adding non-linearity) 
+            phi_s_unsafe = 3*phi_unsafe#3*np.tanh(0.01*phi_unsafe) # phi_s = a*tanh(b*phi) (adding non-linearity) 
             #phi_s_unsafe = 0.25*(1/(1 + np.exp(-0.05*phi_unsafe)) -0.5)
 
             phi_s_unsafe = -phi_s_unsafe # inside obstacles are negative
@@ -349,8 +365,19 @@ class MobileRobot(Node):
         """
         try:
             msg = Float64MultiArray()
-            timestamp = self.time_map.to_msg()
+            #timestamp = self.time_map.to_msg()
+            now = self.get_clock().now().nanoseconds
+            elapsed_time = (now - self.start_time) / 1e9  # Convert nanoseconds to seconds
             
+            # Log the time and CBF values
+            #self.get_logger().info(f"Elapsed time: {elapsed_time:.2f} seconds")
+            
+            # Save data to CSV
+            with open(self.file_path, mode="a", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow([elapsed_time, self.cbf_array[0], self.cbf_array[1]])
+            
+
             #data = [float(timestamp.sec)] + [float(timestamp.nanosec)] + self.cbf_array + [float(0.0)] 
             #data = self.cbf_array + [float(0.0)] + [float(self.dsdf_x_normalized[int(self.y), int(self.x)])] + [float(self.dsdf_y_normalized[int(self.y), int(self.x)])]
             data = self.cbf_array + [float(0.0)]
@@ -360,12 +387,14 @@ class MobileRobot(Node):
         except:
             pass
 
+    
+
     def controller(self):
         
         global vel_prev, dPsi_prev
 
         ##------------------------- hyperparameters of the controller---------------------------------##
-        C_alpha = 0.01            # more conservative is value of it is less. This is alpha(.) in the paper
+        C_alpha = 0.01 * (1/2)          # more conservative is value of it is less. This is alpha(.) in the paper
         P_alpha = 1.0           # power of cosine in cbf. do not touch this, it is always 1 for now
                 
                          
@@ -421,7 +450,7 @@ class MobileRobot(Node):
         yaw = self.yaw # this should be used for CLF calculation which is indeed in cartesian coordinate
 
         #print(sdf, sdf*(1/np.sqrt(dsdf_x_true**2 + dsdf_y_true**2)), (1/np.sqrt(dsdf_x_true**2 + dsdf_y_true**2)))
-        print(sdf, dsdf_x, dsdf_x_true)
+        #print(sdf, dsdf_x, dsdf_x_true)
 
         l_a =  0.25#np.sqrt(dsdf_x**2 + dsdf_y**2) 
         l_s = -1*l_a 
@@ -451,7 +480,7 @@ class MobileRobot(Node):
         
 
 
-        print(f"------------------eta is {np.rad2deg(eta)}-----------------")
+        #[print(f"------------------eta is {np.rad2deg(eta)}-----------------")
         if math.isnan(eta):
             print("eta for nan!")
             eta = 0.0
@@ -567,10 +596,12 @@ class MobileRobot(Node):
         cbf_dot_alpha_cbf = (dcbf_x * np.cos(yaw) + dcbf_y * np.sin(yaw))*vel + dcbf_yaw*dPsi + C_alpha * cbf
         cbf_dot = (dcbf_x * np.cos(yaw) + dcbf_y * np.sin(yaw))*vel + dcbf_yaw*dPsi
         alpha_cbf = C_alpha * cbf
-        self.cbf_array = [float(cbf), float(sdf), float(cbf_dot), float(alpha_cbf)]
+        #self.cbf_array = [float(cbf), float(sdf), float(cbf_dot), float(alpha_cbf)]
+        self.cbf_array = [float(cbf), float(cbf_dot_alpha_cbf)]
         self.linear_velocity = float(vel)
         self.angular_velocity = float(dPsi)
        
+   
 
 
 
@@ -579,18 +610,18 @@ def main(args=None):
     rclpy.init(args=args)
     #executor = MultiThreadedExecutor()
     
-    robot = MobileRobot()
+    node = MobileRobot()
     #rclpy.spin(robot)
     
     #try:
         #executor.add_node(robot)
-    rclpy.spin(robot)
-
-   
-    robot.destroy_node()
+    
+    rclpy.spin(node)
+    node.destroy_node()
     rclpy.shutdown()
-    # robot.destroy_node()
-    # rclpy.shutdown()
+   
+        
+        
 
 if __name__ == '__main__':
     main()
