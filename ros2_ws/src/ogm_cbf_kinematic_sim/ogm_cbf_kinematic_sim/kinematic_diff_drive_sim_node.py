@@ -11,12 +11,14 @@ import numpy as np
 class KinematicDiffDriveSimNode(Node):
     def __init__(self):
         super().__init__('kinematic_diff_drive_sim_node')
-        self.declare_parameter('update_rate', 100.0)  # Hz
+        self.declare_parameter('update_rate', 10.0)  # Hz
         self.update_rate = self.get_parameter('update_rate').value
 
         # Robot state: x, y, and yaw (orientation)
         #self.state = {'x': 12.5, 'y': 10.0, 'yaw': -np.pi/2 }
-        self.state = {'x': 10, 'y': 19.5, 'yaw': -np.pi/2 }
+        #self.state = {'x': 10, 'y': 19.5, 'yaw': -np.pi/2 }
+        self.state = {'x': 7.5, 'y': 2.5, 'yaw': np.pi }
+
 
         # Linear and angular velocities
         self.linear_velocity_x = self.linear_velocity_y = 0.0
@@ -36,8 +38,12 @@ class KinematicDiffDriveSimNode(Node):
 
     def cmd_vel_callback(self, msg: Twist):
         """Callback to update linear and angular velocity from cmd_vel topic."""
-        self.linear_velocity_x = msg.linear.x
-        self.linear_velocity_y = msg.linear.y
+        # recieve the cmd_vel in ego frame and move it to the world frame by rotating it
+        # by the current yaw angle of the robot
+        
+        vel = msg.linear.x
+        self.linear_velocity_x = np.cos(self.state['yaw']) * vel
+        self.linear_velocity_y = np.sin(self.state['yaw']) * vel
         self.angular_velocity = msg.angular.z
         self.get_logger().info(
             f"Received cmd_vel: linear x={self.linear_velocity_x:.2f}, linear y = {self.linear_velocity_y:.2f}, angular={self.angular_velocity:.2f}"
