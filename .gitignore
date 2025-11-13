@@ -1,8 +1,15 @@
+# === ROS2 ===
 ros2_ws/build/
 ros2_ws/install/
 ros2_ws/log/
 ros2_ws/.colcon/
-# Ignore image files
+ros2_ws/.colcon_install_cache/
+ros2_ws/log_latest/
+
+# === WandB ===
+wandb/
+
+# === Images ===
 *.png
 *.jpg
 *.jpeg
@@ -11,4 +18,30 @@ ros2_ws/.colcon/
 *.tiff
 *.svg
 
+# === CSV ===
 *.csv
+
+# === Logs & Temp ===
+*.log
+*.tmp
+*.out
+
+# === Python cache ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.pickle
+
+# === Virtual environments ===
+venv/
+.env/
+.venv/
+
+# === Editor configs and OS trash ===
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store

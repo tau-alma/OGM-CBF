@@ -1,0 +1,12 @@
+ros__parameters:
+  C_alpha: 0.05
+  sdf_a : 3.0
+  Vmin:   -1.0
+  Vmax:    1.0
+  Wmin: -12.5664
+  Wmax:  12.5664
+  Delta_lb: -0.5
+  Delta_ub:  0.5
+  l_a:   0.25
+  l_s:  -0.25
+  update_rate: 50.0

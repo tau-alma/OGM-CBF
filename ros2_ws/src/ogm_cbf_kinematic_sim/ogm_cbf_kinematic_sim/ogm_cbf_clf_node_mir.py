@@ -134,6 +134,21 @@ class MobileRobot(Node):
         self.map_width = None
         self.recieved_map = False
 
+        # Controller hyperparameters
+        self.declare_parameter('C_alpha',     0.01 * 0.5)
+        self.declare_parameter('Vmin',       -1.0)
+        self.declare_parameter('Vmax',        1.0)
+        self.declare_parameter('Wmin', -4*np.pi)
+        self.declare_parameter('Wmax',  4*np.pi)
+
+        self.declare_parameter('Delta_lb',   -0.5)
+        self.declare_parameter('Delta_ub',    0.5)
+
+        # CBF-specific offsets
+        self.declare_parameter('l_a',      0.25)
+        self.declare_parameter('l_s',     -0.25)
+        self.declare_parameter('sdf_a',   3.0)
+
         self.file_path = "cbf_data.csv"
         with open(self.file_path, mode="w", newline="") as file:
             writer = csv.writer(file)
@@ -206,14 +221,16 @@ class MobileRobot(Node):
             # (Optionally) store a copy of the global map
             self.global_map = map_img.copy()
 
+            sdf_a = self.get_parameter('sdf_a').value
+
             # Create the signed distance function (phi_s)
             map_not = 255 - map_img
             map_img = np.uint8(map_img)
             map_not = np.uint8(map_not)
             phi_safe = cv2.distanceTransform(map_img, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1)
-            phi_s_safe = 1 * phi_safe
+            phi_s_safe = sdf_a * phi_safe
             phi_unsafe = cv2.distanceTransform(map_not, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1)
-            phi_s_unsafe = -1 * phi_unsafe
+            phi_s_unsafe = -sdf_a * phi_unsafe
             phi_s = phi_s_unsafe + phi_s_safe
             self.sdf = phi_s.astype(np.float32)
 
@@ -286,7 +303,7 @@ class MobileRobot(Node):
             elapsed_time = (now - self.start_time) / 1e9
             with open(self.file_path, mode="a", newline="") as file:
                 writer = csv.writer(file)
-                writer.writerow([elapsed_time, self.cbf_array[0], self.cbf_array[1]])
+                writer.writerow([elapsed_time, self.cbf_array[0], self.cbf_array[1], self.cbf_array[2]])
             data = self.cbf_array + [0.0]
             msg.data = data
             self.publisher_cbf_.publish(msg)
@@ -300,19 +317,19 @@ class MobileRobot(Node):
         """
         global vel_prev, dPsi_prev
         # Hyperparameters and reference values
-        C_alpha = 0.05#0.01 * 0.5
+        C_alpha = self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
         P_alpha = 1.0
         Kv = 1.0
         Kw = 1.0
         Kd = 1.0
         C_gamma = 1.0
         P_gamma = 1.0
-        Vmax = 1.0
-        Vmin = -1.0
-        Wmax = 4 * np.pi
-        Wmin = -4 * np.pi
-        Delta_ub = +0.5
-        Delta_lb = -0.5
+        Vmax = self.get_parameter('Vmax').value #1.0
+        Vmin = self.get_parameter('Vmin').value #-1.0
+        Wmax = self.get_parameter('Wmax').value #4 * np.pi
+        Wmin = self.get_parameter('Wmin').value #-4 * np.pi
+        Delta_ub = self.get_parameter('Delta_ub').value #0.5
+        Delta_lb = self.get_parameter('Delta_lb').value #-0.5
         heading = normalize_angle(np.pi - np.pi/6)
 
         # Use the dynamic map indices (make sure x and y are integers)
@@ -405,7 +422,8 @@ class MobileRobot(Node):
         dPsi_prev = dPsi
 
         cbf_dot_alpha_cbf = (dcbf_x * np.cos(yaw) + dcbf_y * np.sin(yaw)) * vel + dcbf_yaw * dPsi + C_alpha * cbf
-        self.cbf_array = [float(cbf), float(cbf_dot_alpha_cbf)]
+        cbf_dot = (dcbf_x * np.cos(yaw) + dcbf_y * np.sin(yaw)) * vel + dcbf_yaw * dPsi
+        self.cbf_array = [float(cbf), float(cbf_dot), float(cbf_dot_alpha_cbf)]
         self.linear_velocity = float(vel)
         self.angular_velocity = float(dPsi)
 

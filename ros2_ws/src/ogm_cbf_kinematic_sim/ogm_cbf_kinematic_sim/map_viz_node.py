@@ -36,7 +36,7 @@ class MapVizNode(Node):
 
         self.robot_x_pixel = 0.0
 
-        self.get_logger().info("Map Visualization Node started")
+        # self.get_logger().info("Map Visualization Node started")
 
     def timer_callback(self):
         """Publish the map with the trajectory overlaid."""
@@ -62,7 +62,7 @@ class MapVizNode(Node):
                 # Convert ROS image to NumPy array and save the map
                 gray_map = self.bridge.imgmsg_to_cv2(msg, desired_encoding='mono8')
                 self.map_image = gray_map  # Keep the grayscale map for Matplotlib
-                self.get_logger().info("Map received and stored. Unsubscribing from map_image topic.")
+                #self.get_logger().info("Map received and stored. Unsubscribing from map_image topic.")
 
                 # Unsubscribe from the map_image topic
                 self.map_subscriber
@@ -109,7 +109,7 @@ class MapVizNode(Node):
         # Append to trajectory
     
         self.trajectory.append((robot_x_pixel, robot_y_pixel))
-        self.get_logger().info(f"Added trajectory point: ({robot_x_pixel}, {robot_y_pixel})")
+        #self.get_logger().info(f"Added trajectory point: ({robot_x_pixel}, {robot_y_pixel})")
 
     def pose_to_pixel(self, x, y, im_width_pixel, im_height_pixel, resolution, map_origin):
         """Converts a world coordinate to a pixel coordinate on the map image."""

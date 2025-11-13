@@ -34,7 +34,7 @@ class KinematicDiffDriveSimNode(Node):
         self.last_time = time.time()
         self.create_timer(1.0 / self.update_rate, self.update_simulation)
 
-        self.get_logger().info("Kinematic Differential Drive Simulator Node started")
+        #self.get_logger().info("Kinematic Differential Drive Simulator Node started")
 
     def cmd_vel_callback(self, msg: Twist):
         """Callback to update linear and angular velocity from cmd_vel topic."""
@@ -45,9 +45,9 @@ class KinematicDiffDriveSimNode(Node):
         self.linear_velocity_x = np.cos(self.state['yaw']) * vel
         self.linear_velocity_y = np.sin(self.state['yaw']) * vel
         self.angular_velocity = msg.angular.z
-        self.get_logger().info(
-            f"Received cmd_vel: linear x={self.linear_velocity_x:.2f}, linear y = {self.linear_velocity_y:.2f}, angular={self.angular_velocity:.2f}"
-        )
+        # self.get_logger().info(
+        #     f"Received cmd_vel: linear x={self.linear_velocity_x:.2f}, linear y = {self.linear_velocity_y:.2f}, angular={self.angular_velocity:.2f}"
+        # )
 
     def update_simulation(self):
         """Update the robot's state based on the current velocities."""
@@ -89,9 +89,9 @@ class KinematicDiffDriveSimNode(Node):
         odom_msg.twist.twist.angular.z = self.angular_velocity
 
         self.odom_publisher.publish(odom_msg)
-        self.get_logger().info(
-            f"Published odometry: x={self.state['x']:.2f}, y={self.state['y']:.2f}, yaw={math.degrees(self.state['yaw']):.2f}°"
-        )
+        # self.get_logger().info(
+        #     f"Published odometry: x={self.state['x']:.2f}, y={self.state['y']:.2f}, yaw={math.degrees(self.state['yaw']):.2f}°"
+        # )
 
     @staticmethod
     def normalize_angle(angle):
