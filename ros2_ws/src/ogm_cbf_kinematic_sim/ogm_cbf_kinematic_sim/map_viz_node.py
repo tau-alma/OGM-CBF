@@ -8,6 +8,8 @@ import matplotlib
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 import numpy as np
+from ogm_cbf_kinematic_sim.utils import world_to_pixel
+
 
 matplotlib.use('Agg')  # Non-interactive backend for ROS
 
@@ -100,10 +102,13 @@ class MapVizNode(Node):
         robot_x = msg.pose.pose.position.x
         robot_y = msg.pose.pose.position.y
 
-        # Convert to pixel coordinates
-        robot_x_pixel, robot_y_pixel = self.pose_to_pixel(
-            robot_x, robot_y, self.map_image.shape[1], self.map_image.shape[0], 0.05, [0, 0]
-        )
+        # # Convert to pixel coordinates
+        # robot_x_pixel, robot_y_pixel = self.pose_to_pixel(
+        #     robot_x, robot_y, self.map_image.shape[1], self.map_image.shape[0], 0.05, [0, 0]
+        # )
+
+        robot_x_pixel, robot_y_pixel = world_to_pixel(robot_x, robot_y, img_height=self.map_image.shape[0])
+        
     
 
         # Append to trajectory
@@ -111,9 +116,9 @@ class MapVizNode(Node):
         self.trajectory.append((robot_x_pixel, robot_y_pixel))
         #self.get_logger().info(f"Added trajectory point: ({robot_x_pixel}, {robot_y_pixel})")
 
-    def pose_to_pixel(self, x, y, im_width_pixel, im_height_pixel, resolution, map_origin):
-        """Converts a world coordinate to a pixel coordinate on the map image."""
-        return (x - map_origin[0]) / resolution, im_height_pixel - ((y - map_origin[1]) / resolution)
+    # def pose_to_pixel(self, x, y, im_width_pixel, im_height_pixel, resolution, map_origin):
+    #     """Converts a world coordinate to a pixel coordinate on the map image."""
+    #     return (x - map_origin[0]) / resolution, im_height_pixel - ((y - map_origin[1]) / resolution)
 
 
 def main(args=None):

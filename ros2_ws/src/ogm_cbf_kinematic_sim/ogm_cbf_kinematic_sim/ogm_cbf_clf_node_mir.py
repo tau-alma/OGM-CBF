@@ -17,6 +17,8 @@ from geometry_msgs.msg import TwistStamped, Twist
 from time import monotonic
 import os
 import csv
+from ogm_cbf_kinematic_sim.utils import world_to_pixel
+
 
 def interpolate(sdf, x, y):
     """
@@ -262,7 +264,7 @@ class MobileRobot(Node):
                 msg.pose.pose.orientation.y,
                 msg.pose.pose.orientation.z,
                 msg.pose.pose.orientation.w))
-            self.x_init, self.y_init = self.pose_to_pixel(self.x_init_real, self.y_init_real)
+            self.x_init, self.y_init = world_to_pixel(self.x_init_real, self.y_init_real, img_height=self.map_height)
         self.counter += 1
 
         self.x_real = msg.pose.pose.position.x
@@ -278,7 +280,7 @@ class MobileRobot(Node):
 
         # Convert real-world pose to pixel coordinates using the map dimensions
         if self.sdf is not None:
-            self.x, self.y = self.pose_to_pixel(self.x_real, self.y_real)
+            self.x, self.y = world_to_pixel(self.x_real, self.y_real, img_height=self.map_height)
             self.controller()
             self.publish_cbf()
             #self.publish_plot_twist()
@@ -330,11 +332,12 @@ class MobileRobot(Node):
         Wmin = self.get_parameter('Wmin').value #-4 * np.pi
         Delta_ub = self.get_parameter('Delta_ub').value #0.5
         Delta_lb = self.get_parameter('Delta_lb').value #-0.5
-        heading = normalize_angle(np.pi - np.pi/6)
+        #heading = normalize_angle(np.pi - np.pi/6)
+        heading = normalize_angle(np.pi)
 
         # Use the dynamic map indices (make sure x and y are integers)
-        #sdf = self.sdf[int(self.y), int(self.x)]
-        sdf = interpolate(self.sdf, self.x, self.y)
+        sdf = self.sdf[int(self.y), int(self.x)]
+        #sdf = interpolate(self.sdf, self.x, self.y)
         dsdf_x_true = self.dsdf_x[int(self.y), int(self.x)]
         dsdf_y_true = self.dsdf_y[int(self.y), int(self.x)]
         dsdf_x_normalized = self.dsdf_x_normalized[int(self.y), int(self.x)]

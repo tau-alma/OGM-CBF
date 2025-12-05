@@ -1,8 +1,8 @@
 ros__parameters:
-  C_alpha: 0.05
+  C_alpha: 0.5
   sdf_a : 3.0
-  Vmin:   -1.0
-  Vmax:    1.0
+  Vmin:   -2.0
+  Vmax:    2.0
   Wmin: -12.5664
   Wmax:  12.5664
   Delta_lb: -0.5
