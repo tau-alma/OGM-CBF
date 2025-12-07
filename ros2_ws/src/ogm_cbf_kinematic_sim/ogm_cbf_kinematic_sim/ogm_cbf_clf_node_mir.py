@@ -132,8 +132,8 @@ class MobileRobot(Node):
         # Global map and dimensions (will be updated on map reception)
         self.global_map = None
         self.map = None
-        self.map_height = None
-        self.map_width = None
+        self.map_height = 146#None
+        self.map_width = 192#None
         self.recieved_map = False
 
         # Controller hyperparameters
@@ -319,19 +319,19 @@ class MobileRobot(Node):
         """
         global vel_prev, dPsi_prev
         # Hyperparameters and reference values
-        C_alpha = self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
+        C_alpha = 0.005#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
         P_alpha = 1.0
         Kv = 1.0
         Kw = 1.0
         Kd = 1.0
         C_gamma = 1.0
         P_gamma = 1.0
-        Vmax = self.get_parameter('Vmax').value #1.0
-        Vmin = self.get_parameter('Vmin').value #-1.0
-        Wmax = self.get_parameter('Wmax').value #4 * np.pi
-        Wmin = self.get_parameter('Wmin').value #-4 * np.pi
-        Delta_ub = self.get_parameter('Delta_ub').value #0.5
-        Delta_lb = self.get_parameter('Delta_lb').value #-0.5
+        Vmax =1.0#self.get_parameter('Vmax').value #1.0
+        Vmin = -1.0#self.get_parameter('Vmin').value #-1.0
+        Wmax = 4 * np.pi#self.get_parameter('Wmax').value #4 * np.pi
+        Wmin = -4 * np.pi#self.get_parameter('Wmin').value #-4 * np.pi
+        Delta_ub = 0.5#self.get_parameter('Delta_ub').value #0.5
+        Delta_lb = -0.5#self.get_parameter('Delta_lb').value #-0.5
         #heading = normalize_angle(np.pi - np.pi/6)
         heading = normalize_angle(np.pi)
 
@@ -359,6 +359,7 @@ class MobileRobot(Node):
         sine_eta = np.cross(sdf_normalized_grad_vector, x_vector)
         eta = np.arctan2(sine_eta, cosine_eta)
         eta = normalize_angle(eta)
+        print(f"eta: {np.rad2deg(eta)}, cos(eta): {np.cos(eta)}, sin(eta): {np.sin(eta)}")
         if math.isnan(eta):
             self.get_logger().warn("eta is NaN!")
             eta = 0.0

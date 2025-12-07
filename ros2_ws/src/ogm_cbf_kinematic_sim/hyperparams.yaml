@@ -1,5 +1,5 @@
 ros__parameters:
-  C_alpha: 0.5
+  C_alpha: 0.005
   sdf_a : 3.0
   Vmin:   -2.0
   Vmax:    2.0

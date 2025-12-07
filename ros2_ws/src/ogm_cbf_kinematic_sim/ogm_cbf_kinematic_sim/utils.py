@@ -1,6 +1,6 @@
 # ogm_cbf_kinematic_sim/utils.py
 
-def world_to_pixel(x, y, resolution = 0.05, origin_x=0, origin_y=0, img_height=400):
+def world_to_pixel(x, y, resolution = 0.05, origin_x=0.0, origin_y=0.0, img_height=400):
     """
     Convert world coordinates (meters) -> image pixel coordinates.
 
@@ -9,6 +9,8 @@ def world_to_pixel(x, y, resolution = 0.05, origin_x=0, origin_y=0, img_height=4
         pixel_y = img_height - ( (y - origin_y) / res )
     """
     px = (x - origin_x) / resolution
+    #print(f"x: {x}, origin_x: {origin_x}, resolution: {resolution}, px: {px}")
+    #print(f"y: {y}, origin_y: {origin_y}, resolution: {resolution}, img_height: {img_height}")
     py = img_height - ((y - origin_y) / resolution)
     return int(px), int(py)
 
