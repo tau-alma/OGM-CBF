@@ -20,7 +20,7 @@ import csv
 from ogm_cbf_kinematic_sim.utils import world_to_pixel
 from time import time
 import sys
-
+from ogm_cbf_kinematic_sim.conf import controller_frequency, simulator_frequency
 
 def interpolate(sdf, x, y):
     """
@@ -67,8 +67,42 @@ def interpolate(sdf, x, y):
 def sdf_world(sdf_array, x_world, y_world,
               resolution=0.05, origin_x=0.0, origin_y=0.0):
     img_height = sdf_array.shape[0]
-    px, py = world_to_pixel(x_world, y_world, resolution, origin_x, origin_y, img_height)
+    px, py = world_to_pixel(
+        x_world, y_world,
+        resolution=resolution,
+        origin_x=origin_x,
+        origin_y=origin_y,
+        img_height=img_height,
+        continuous=True,          # <-- IMPORTANT
+    )
     return interpolate(sdf_array, px, py)
+
+def bilinear(arr, x, y):
+    H, W = arr.shape
+    if x < 0 or x > W - 1 or y < 0 or y > H - 1:
+        # outside map, choose convention
+        return 0.0
+
+    x0 = int(np.floor(x))
+    y0 = int(np.floor(y))
+    x1 = min(x0 + 1, W - 1)
+    y1 = min(y0 + 1, H - 1)
+
+    dx = x - x0
+    dy = y - y0
+
+    Q11 = arr[y0, x0]
+    Q21 = arr[y0, x1]
+    Q12 = arr[y1, x0]
+    Q22 = arr[y1, x1]
+
+    return float(
+        Q11 * (1 - dx) * (1 - dy) +
+        Q21 * dx       * (1 - dy) +
+        Q12 * (1 - dx) * dy       +
+        Q22 * dx       * dy
+    )
+
 
 matplotlib.use('Agg')
 vel_prev = 0
@@ -101,7 +135,9 @@ class MobileRobot(Node):
         self.publisher_cbf_ = self.create_publisher(Float64MultiArray, '/cbf_array', 1)
         self.publisher_plot_twist_ = self.create_publisher(TwistStamped, '/plot_vel', 1)
         self.twist_publisher_ = self.create_publisher(Twist, 'cmd_vel', 1)
-        self.twist_timer = self.create_timer(0.2, self.publish_velocity)
+
+        vel_pub_time = 1.0 / controller_frequency
+        self.twist_timer = self.create_timer(vel_pub_time, self.publish_velocity)
 
         self.start_time = self.get_clock().now().nanoseconds
 
@@ -168,6 +204,60 @@ class MobileRobot(Node):
         self.time_cbf_prev = 0.0
 
         self.sdf_calculated = False
+        self.map_resolution = 0.05
+        self.map_origin_x = 0.0
+        self.map_origin_y = 0.0
+
+    def sdf_at_world(self, x_world, y_world):
+        img_height = self.sdf.shape[0]
+        px, py = world_to_pixel(
+            x_world, y_world,
+            resolution=self.map_resolution,
+            origin_x=self.map_origin_x,
+            origin_y=self.map_origin_y,
+            img_height=img_height,
+            continuous=True,
+        )
+        return bilinear(self.sdf, px, py)
+
+    def sdf_grad_at_world(self, x_world, y_world):
+        img_height = self.sdf.shape[0]
+        px, py = world_to_pixel(
+            x_world, y_world,
+            resolution=self.map_resolution,
+            origin_x=self.map_origin_x,
+            origin_y=self.map_origin_y,
+            img_height=img_height,
+            continuous=True,
+        )
+        gx = bilinear(self.dsdf_x_world, px, py)
+        gy = bilinear(self.dsdf_y_world, px, py)
+        return gx, gy
+    
+    def hessian_at_world(self, x_world, y_world):
+        """
+        Returns continuous Hessian entries (dxx, dxy, dyx, dyy)
+        at world coordinates (x_world, y_world).
+        All in [1/m²].
+        """
+        H = self.sdf.shape[0]
+
+        px, py = world_to_pixel(
+            x_world, y_world,
+            resolution=self.map_resolution,
+            origin_x=self.map_origin_x,
+            origin_y=self.map_origin_y,
+            img_height=H,
+            continuous=True,        # <-- IMPORTANT: keep fractional pixels
+        )
+
+        dxx = interpolate(self.ddsdf_xx, px, py)
+        dxy = interpolate(self.ddsdf_xy, px, py)
+        dyx = interpolate(self.ddsdf_yx, px, py)
+        dyy = interpolate(self.ddsdf_yy, px, py)
+
+        return dxx, dxy, dyx, dyy
+
         
 
     def publish_velocity(self):
@@ -244,8 +334,11 @@ class MobileRobot(Node):
             map_img = np.uint8(map_img)
             map_not = np.uint8(map_not)
             phi_safe = cv2.distanceTransform(map_img, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1)
+            phi_safe = phi_safe - 1.0
             phi_s_safe = sdf_a * np.tanh( 0.005*phi_safe )
+            
             phi_unsafe = cv2.distanceTransform(map_not, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1)
+            #phi_unsafe = np.where(phi_unsafe != 1.0, phi_unsafe, 0.0)
             phi_s_unsafe = -sdf_a * np.tanh( 0.005*phi_unsafe)
             phi_s = phi_s_unsafe + phi_s_safe
             self.sdf = phi_s.astype(np.float32)
@@ -256,6 +349,23 @@ class MobileRobot(Node):
             edges_y, edges_x = np.gradient(self.sdf)
             self.dsdf_x = edges_x
             self.dsdf_y = -edges_y  # adjust for Cartesian coordinates
+
+            # Second derivatives in pixel space
+            gyy, gyx = np.gradient(edges_y)  # gyy = d²φ/dpy², gyx = d²φ/(dpx dpy)
+            gxy, gxx = np.gradient(edges_x)  # gxy = d²φ/(dpy dpx), gxx = d²φ/dpx²
+
+
+            res = self.map_resolution
+            self.ddsdf_xx = gxx / (res ** 2)         # ∂²φ / ∂x²
+            self.ddsdf_yy = gyy / (res ** 2)         # ∂²φ / ∂y² (with sign from y mapping)
+            self.ddsdf_xy = -gxy / (res ** 2)        # ∂²φ / ∂x∂y
+            self.ddsdf_yx = -gyx / (res ** 2)        # ∂²φ / ∂y∂x
+
+            # ---- NEW: gradient in WORLD coordinates [1/m] ----
+            res = self.map_resolution
+            self.dsdf_x_world = self.dsdf_x / res          # ∂φ / ∂x_world
+            self.dsdf_y_world = self.dsdf_y / res          # ∂φ / ∂y_world
+            # --------------------------------------------------
 
             # Normalize the gradient vectors
             norm_grad = np.sqrt(self.dsdf_x**2 + self.dsdf_y**2)
@@ -339,41 +449,64 @@ class MobileRobot(Node):
         """
         global vel_prev, dPsi_prev
         # Hyperparameters and reference values
-        C_alpha = 5#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
+        C_alpha = 0.1#5#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
         P_alpha = 1.0
         Kv = 1.0
         Kw = 0.01
         Kd = 1.0
         C_gamma = 1.0
         P_gamma = 1.0
-        Vmax =0.05 #self.get_parameter('Vmax').value #1.0
-        Vmin = -0.05#self.get_parameter('Vmin').value #-1.0
+        Vmax =1.0 #self.get_parameter('Vmax').value #1.0
+        Vmin = -1.0#self.get_parameter('Vmin').value #-1.0
         Wmax = 4 * np.pi#self.get_parameter('Wmax').value #4 * np.pi
         Wmin = -4 * np.pi#self.get_parameter('Wmin').value #-4 * np.pi
         Delta_ub = 1.0#0.5#self.get_parameter('Delta_ub').value #0.5
         Delta_lb = -1.0#-0.5#self.get_parameter('Delta_lb').value #-0.5
-        #heading = normalize_angle(np.pi - np.pi/6)
-        heading = normalize_angle(np.pi)
+        heading = normalize_angle(np.pi - np.pi/6)
+        #heading = normalize_angle(np.pi)
 
-        # Use the dynamic map indices (make sure x and y are integers)
-        sdf = self.sdf[int(self.y), int(self.x)]
-        #sdf = interpolate(self.sdf, self.x, self.y)
-        dsdf_x_true = self.dsdf_x[int(self.y), int(self.x)]
-        dsdf_y_true = self.dsdf_y[int(self.y), int(self.x)]
-        dsdf_x_normalized = self.dsdf_x_normalized[int(self.y), int(self.x)]
-        dsdf_y_normalized = self.dsdf_y_normalized[int(self.y), int(self.x)]
+        # # Use the dynamic map indices (make sure x and y are integers)
+        # sdf = self.sdf[int(self.y), int(self.x)]
+        # #sdf = interpolate(self.sdf, self.x, self.y)
+        # dsdf_x_true = self.dsdf_x[int(self.y), int(self.x)]
+        # dsdf_y_true = self.dsdf_y[int(self.y), int(self.x)]
+        # dsdf_x_normalized = self.dsdf_x_normalized[int(self.y), int(self.x)]
+        # dsdf_y_normalized = self.dsdf_y_normalized[int(self.y), int(self.x)]
+
+        xw = self.x_real
+        yw = self.y_real
         yaw = self.yaw
-        l_a = 2
-        beta = 0.005
+
+        # Continuous SDF and gradient in WORLD coordinates
+        sdf = self.sdf_at_world(xw, yw)
+        dsdf_x_true, dsdf_y_true = self.sdf_grad_at_world(xw, yw)
+        ddsdf_xx, ddsdf_xy, ddsdf_yx, ddsdf_yy = self.hessian_at_world(xw, yw)
+
+       
+
+        # Normalized gradient (world)
+        grad_norm = math.hypot(dsdf_x_true, dsdf_y_true)
+        if grad_norm < 1e-6:
+            dsdf_x_normalized = 0.0
+            dsdf_y_normalized = 0.0
+        else:
+            dsdf_x_normalized = dsdf_x_true / grad_norm
+            dsdf_y_normalized = dsdf_y_true / grad_norm
+
+
+
+        yaw = self.yaw
+        l_a = 0.025
+        beta = 0.0#0.005
         l_s = -l_a* (2*np.pi*beta + 1)
         epsilon = 0.000001
 
         if math.isnan(dsdf_x_normalized) or math.isnan(dsdf_y_normalized):
-            self.get_logger().warn("NaN in normalized gradient!")
+            self.get_logger().error("NaN in normalized gradient!")
             dsdf_x_normalized = dsdf_y_normalized = 0.0
-        if any(math.isnan(val) for val in [self.ddsdf_xx, self.ddsdf_xy, self.ddsdf_yx, self.ddsdf_yy]):
-            self.get_logger().warn("NaN in second derivative!")
-            self.ddsdf_xx = self.ddsdf_xy = self.ddsdf_yx = self.ddsdf_yy = 0.0
+        if any(math.isnan(val) for val in [ddsdf_xx, ddsdf_xy, ddsdf_yx, ddsdf_yy]):
+            self.get_logger().error("NaN in second derivative!")
+            ddsdf_xx = ddsdf_xy =ddsdf_yx = ddsdf_yy = 0.0
 
         x_vector = np.array([np.cos(yaw), np.sin(yaw)])
         sdf_normalized_grad_vector = np.array([dsdf_x_normalized, dsdf_y_normalized])
@@ -392,7 +525,7 @@ class MobileRobot(Node):
         #time_now = time()
         #delta_time = time_now - self.time_cbf_prev if self.time_cbf_prev != 0.0 else 1e-5
         #self.time_cbf_prev = time_now
-        delta_time = 0.2#1/100
+        delta_time = 1/controller_frequency#1/100
         true_cbf_dot = (cbf - self.cbf_prev)/ delta_time
 
         try:
@@ -416,19 +549,19 @@ class MobileRobot(Node):
         #dcbf_yaw = P_alpha * l_a * (-np.sin(eta)) * np.cos(eta) ** (P_alpha - 1)
         dcbf_x = dsdf_x_true 
         + l_a * (
-            np.dot(np.array([self.ddsdf_xx, self.ddsdf_yx]), x_vector) +
+            np.dot(np.array([ddsdf_xx, ddsdf_yx]), x_vector) +
             np.dot(sdf_normalized_grad_vector, dx_vector_x) +
 
-            (np.dot(np.array([self.ddsdf_xx, self.ddsdf_yx]), x_vector) +
+            (np.dot(np.array([ddsdf_xx, ddsdf_yx]), x_vector) +
             np.dot(sdf_normalized_grad_vector, dx_vector_x))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
         ) 
         dcbf_y = dsdf_y_true 
         
         + l_a * (
-            np.dot(np.array([self.ddsdf_xy, self.ddsdf_yy]), x_vector) +
+            np.dot(np.array([ddsdf_xy, ddsdf_yy]), x_vector) +
             np.dot(sdf_normalized_grad_vector, dx_vector_y) +
 
-            ( np.dot(np.array([self.ddsdf_xy, self.ddsdf_yy]), x_vector) +
+            ( np.dot(np.array([ddsdf_xy, ddsdf_yy]), x_vector) +
             np.dot(sdf_normalized_grad_vector, dx_vector_y))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
         )
         dcbf_yaw = l_a * (-np.sin(eta) + beta)

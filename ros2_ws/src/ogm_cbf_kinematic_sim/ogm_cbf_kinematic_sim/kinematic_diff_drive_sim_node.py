@@ -7,13 +7,15 @@ import math
 import time
 import numpy as np
 from tf_transformations import euler_from_quaternion
+from ogm_cbf_kinematic_sim.conf import controller_frequency, simulator_frequency
 
 
 
 class KinematicDiffDriveSimNode(Node):
     def __init__(self):
         super().__init__('kinematic_diff_drive_sim_node')
-        self.declare_parameter('update_rate', 5.0)  # Hz
+        
+        self.declare_parameter('update_rate', simulator_frequency)  # Hz
         self.update_rate = self.get_parameter('update_rate').value
 
         # Robot state: x, y, and yaw (orientation)
@@ -90,7 +92,7 @@ class KinematicDiffDriveSimNode(Node):
         # recieve the cmd_vel in ego frame and move it to the world frame by rotating it
         # by the current yaw angle of the robot
         
-        vel = (msg.linear.x)/ 0.05
+        vel = (msg.linear.x)
         self.linear_velocity_x = np.cos(self.state['yaw']) * vel
         self.linear_velocity_y = np.sin(self.state['yaw']) * vel
         self.angular_velocity = msg.angular.z
