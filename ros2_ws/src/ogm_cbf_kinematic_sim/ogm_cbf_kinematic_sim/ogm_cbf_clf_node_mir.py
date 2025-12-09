@@ -462,8 +462,8 @@ class MobileRobot(Node):
         Wmin = -4 * np.pi#self.get_parameter('Wmin').value #-4 * np.pi
         Delta_ub = 1.0#0.5#self.get_parameter('Delta_ub').value #0.5
         Delta_lb = -1.0#-0.5#self.get_parameter('Delta_lb').value #-0.5
-        heading = normalize_angle(np.pi - np.pi/6)
-        #heading = normalize_angle(np.pi)
+        #heading = normalize_angle(np.pi - np.pi/6)
+        heading = normalize_angle(np.pi)
 
         # # Use the dynamic map indices (make sure x and y are integers)
         # sdf = self.sdf[int(self.y), int(self.x)]
@@ -497,9 +497,8 @@ class MobileRobot(Node):
 
         yaw = self.yaw
         l_a = 0.025
-        beta = 0.0#0.005
-        l_s = -l_a* (2*np.pi*beta + 1)
-        epsilon = 0.000001
+        l_s = -l_a
+        
 
         if math.isnan(dsdf_x_normalized) or math.isnan(dsdf_y_normalized):
             self.get_logger().error("NaN in normalized gradient!")
@@ -519,8 +518,8 @@ class MobileRobot(Node):
             self.get_logger().warn("eta is NaN!")
             eta = 0.0
 
-        #cbf = sdf + l_s + l_a * (np.cos(eta) ** P_alpha)
-        cbf = sdf + l_s + l_a * (np.cos(eta)+ beta*eta)
+        
+        cbf = sdf + l_s + l_a * (np.cos(eta))
 
         #time_now = time()
         #delta_time = time_now - self.time_cbf_prev if self.time_cbf_prev != 0.0 else 1e-5
@@ -550,21 +549,15 @@ class MobileRobot(Node):
         dcbf_x = dsdf_x_true 
         + l_a * (
             np.dot(np.array([ddsdf_xx, ddsdf_yx]), x_vector) +
-            np.dot(sdf_normalized_grad_vector, dx_vector_x) +
-
-            (np.dot(np.array([ddsdf_xx, ddsdf_yx]), x_vector) +
-            np.dot(sdf_normalized_grad_vector, dx_vector_x))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
+            np.dot(sdf_normalized_grad_vector, dx_vector_x)
         ) 
         dcbf_y = dsdf_y_true 
         
         + l_a * (
             np.dot(np.array([ddsdf_xy, ddsdf_yy]), x_vector) +
-            np.dot(sdf_normalized_grad_vector, dx_vector_y) +
-
-            ( np.dot(np.array([ddsdf_xy, ddsdf_yy]), x_vector) +
-            np.dot(sdf_normalized_grad_vector, dx_vector_y))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
+            np.dot(sdf_normalized_grad_vector, dx_vector_y) 
         )
-        dcbf_yaw = l_a * (-np.sin(eta) + beta)
+        dcbf_yaw = l_a * (-np.sin(eta) )
 
         
 
