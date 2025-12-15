@@ -159,6 +159,7 @@ class MobileRobot(Node):
         self.grad_sdf = None
         self.grad_sdf_normalized = None
         self.ddsdf_xx = self.ddsdf_yy = self.ddsdf_xy = self.ddsdf_yx = 0.0
+        self.ddsdf_xx_normalized = self.ddsdf_yy_normalized = self.ddsdf_xy_normalized = self.ddsdf_yx_normalized = 0.0
 
         self.fig, self.ax = plt.subplots(1, 1)
         self.Vx = self.Vy = self.Vz = 0.0
@@ -234,7 +235,7 @@ class MobileRobot(Node):
         gy = bilinear(self.dsdf_y_world, px, py)
         return gx, gy
     
-    def hessian_at_world(self, x_world, y_world):
+    def hessian_at_world(self, x_world, y_world, normalized=False):
         """
         Returns continuous Hessian entries (dxx, dxy, dyx, dyy)
         at world coordinates (x_world, y_world).
@@ -255,6 +256,12 @@ class MobileRobot(Node):
         dxy = interpolate(self.ddsdf_xy, px, py)
         dyx = interpolate(self.ddsdf_yx, px, py)
         dyy = interpolate(self.ddsdf_yy, px, py)
+
+        if normalized:
+            dxx = interpolate(self.ddsdf_xx_normalized, px, py)
+            dxy = interpolate(self.ddsdf_xy_normalized, px, py)
+            dyx = interpolate(self.ddsdf_yx_normalized, px, py)
+            dyy = interpolate(self.ddsdf_yy_normalized, px, py)
 
         return dxx, dxy, dyx, dyy
 
@@ -372,6 +379,17 @@ class MobileRobot(Node):
             norm_grad[norm_grad == 0] = 1.0  # avoid division by zero
             self.dsdf_x_normalized = self.dsdf_x / norm_grad
             self.dsdf_y_normalized = self.dsdf_y / norm_grad
+
+            gyy_norm, gyx_norm = np.gradient(-self.dsdf_y_normalized)
+            gxy_norm, gxx_norm = np.gradient(self.dsdf_x_normalized)
+
+            self.ddsdf_xx_normalized = gxx_norm / (res ** 2)         # ∂²(∂φ/∂x_normalized) / ∂x²
+            self.ddsdf_yy_normalized = gyy_norm / (res ** 2)         # ∂²(∂φ/∂y_normalized) / ∂y²
+            self.ddsdf_xy_normalized = -gxy_norm / (res ** 2)        # ∂²(∂φ/∂x_normalized) / ∂x∂y
+            self.ddsdf_yx_normalized = -gyx_norm / (res ** 2)        # ∂²(∂φ/∂y_normalized) / ∂y∂x
+
+            
+
             self.grad_sdf = np.array([self.dsdf_x, self.dsdf_y])
             self.grad_sdf_normalized = np.array([self.dsdf_x_normalized, self.dsdf_y_normalized])
             # Second derivatives will be computed at the robot's location later.
@@ -493,12 +511,27 @@ class MobileRobot(Node):
             dsdf_x_normalized = dsdf_x_true / grad_norm
             dsdf_y_normalized = dsdf_y_true / grad_norm
 
+        
+        ddsdf_xx_normalized, ddsdf_xy_normalized, ddsdf_yx_normalized, ddsdf_yy_normalized = self.hessian_at_world(xw, yw, normalized=True)
+        # gyy_norm, gyx_norm = np.gradient(dsdf_y_normalized)
+        # gxy_norm, gxx_norm = np.gradient(dsdf_x_normalized)
+
+        # res = self.map_resolution
+
+        # ddsdf_xx_normalized = gxx_norm / (res ** 2)         # ∂²(∂φ/∂x_normalized) / ∂x²
+        # ddsdf_yy_normalized = gyy_norm / (res ** 2)         # ∂²(∂φ/∂y_normalized) / ∂y²
+        # ddsdf_xy_normalized = -gxy_norm / (res ** 2)        # ∂²(∂φ/∂x_normalized) / ∂x∂y
+        # ddsdf_yx_normalized = -gyx_norm / (res ** 2)        # ∂²(∂φ/∂y_normalized) / ∂y∂x
+        
+
+
 
 
         yaw = self.yaw
-        l_a = 0.025
-        l_s = -l_a
-        
+        l_a = 0.25
+        beta = 0.05
+        l_s = -l_a* (2*np.pi*beta + 1)
+        epsilon = 0.000001
 
         if math.isnan(dsdf_x_normalized) or math.isnan(dsdf_y_normalized):
             self.get_logger().error("NaN in normalized gradient!")
@@ -509,17 +542,21 @@ class MobileRobot(Node):
 
         x_vector = np.array([np.cos(yaw), np.sin(yaw)])
         sdf_normalized_grad_vector = np.array([dsdf_x_normalized, dsdf_y_normalized])
-        cosine_eta = np.dot(sdf_normalized_grad_vector, x_vector)
-        sine_eta = np.cross(sdf_normalized_grad_vector, x_vector)
+    
+
+
+        cosine_eta = np.dot(x_vector, sdf_normalized_grad_vector)
+        sine_eta = np.cross(x_vector, sdf_normalized_grad_vector)
         eta = np.arctan2(sine_eta, cosine_eta)
         eta = normalize_angle(eta)
+        # eta is sth minus yaw
         
         if math.isnan(eta):
             self.get_logger().warn("eta is NaN!")
             eta = 0.0
 
-        
-        cbf = sdf + l_s + l_a * (np.cos(eta))
+        #cbf = sdf + l_s + l_a * (np.cos(eta) ** P_alpha)
+        cbf = sdf + l_s + l_a * (np.cos(eta)+ beta*np.sin(eta))
 
         #time_now = time()
         #delta_time = time_now - self.time_cbf_prev if self.time_cbf_prev != 0.0 else 1e-5
@@ -549,15 +586,24 @@ class MobileRobot(Node):
         dcbf_x = dsdf_x_true 
         + l_a * (
             np.dot(np.array([ddsdf_xx, ddsdf_yx]), x_vector) +
-            np.dot(sdf_normalized_grad_vector, dx_vector_x)
+            np.dot(sdf_normalized_grad_vector, dx_vector_x) +
+
+            #(np.dot(np.array([ddsdf_xx, ddsdf_yx]), x_vector) +
+            #np.dot(sdf_normalized_grad_vector, dx_vector_x))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
+            beta*((-np.sin(yaw)* dyaw_x)*dsdf_y_normalized + np.cos(yaw)*ddsdf_yx_normalized) - (np.cos(yaw)* dyaw_x* dsdf_x_normalized + np.sin(yaw)* ddsdf_xx_normalized)
+
         ) 
         dcbf_y = dsdf_y_true 
         
         + l_a * (
             np.dot(np.array([ddsdf_xy, ddsdf_yy]), x_vector) +
-            np.dot(sdf_normalized_grad_vector, dx_vector_y) 
+            np.dot(sdf_normalized_grad_vector, dx_vector_y) +
+
+            #( np.dot(np.array([ddsdf_xy, ddsdf_yy]), x_vector) +
+            #np.dot(sdf_normalized_grad_vector, dx_vector_y))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
+            beta*((-np.sin(yaw)* dyaw_y)*dsdf_y_normalized + np.cos(yaw)*ddsdf_yy_normalized) - (np.cos(yaw)* dyaw_y* dsdf_x_normalized + np.sin(yaw)* ddsdf_xy_normalized)
         )
-        dcbf_yaw = l_a * (-np.sin(eta) )
+        dcbf_yaw = -l_a * (-np.sin(eta) + beta*(np.cos(eta)))
 
         
 
