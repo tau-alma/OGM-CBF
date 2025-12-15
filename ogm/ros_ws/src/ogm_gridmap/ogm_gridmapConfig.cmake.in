@@ -1,0 +1,14 @@
+# - Config file for the ogm_gridmap package
+# It defines the following variables
+#  ogm_gridmap_INCLUDE_DIRS - include directories for FooBar
+#  ogm_gridmap_LIBRARIES    - libraries to link against
+#  ogm_gridmap_EXECUTABLE   - the bar executable
+
+set(ogm_gridmap_INCLUDE_DIRS "@CONF_INCLUDE_DIRS@")
+
+# Our library dependencies (contains definitions for IMPORTED targets)
+include("${ogm_gridmap_DIR}/export_ogm_gridmap.cmake")
+
+# These are IMPORTED targets created by ogm_gridmapTargets.cmake
+
+
