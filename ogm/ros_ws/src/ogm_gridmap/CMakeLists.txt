@@ -24,14 +24,20 @@ include_directories( ${OpenCV_INCLUDE_DIRS} )
 
 add_executable(ogm_laserscan src/laserscan_node.cpp)
 add_executable(ogm_pointcloud src/pointcloud_node.cpp)
+add_executable(pose_2_odom src/main_pose_2_odom.cpp)
 ament_target_dependencies(ogm_laserscan rclcpp std_msgs sensor_msgs nav_msgs gridmap OpenCV cv_bridge)
 ament_target_dependencies(ogm_pointcloud rclcpp std_msgs sensor_msgs nav_msgs gridmap OpenCV cv_bridge)
+ament_target_dependencies(pose_2_odom rclcpp std_msgs sensor_msgs nav_msgs geometry_msgs)
 
 target_include_directories(ogm_laserscan PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 
 target_include_directories(ogm_pointcloud PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+
+target_include_directories(pose_2_odom PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 
@@ -48,6 +54,10 @@ ogm_laserscan
 
 install(TARGETS
 ogm_pointcloud
+  DESTINATION lib/${PROJECT_NAME})
+
+install(TARGETS
+pose_2_odom
   DESTINATION lib/${PROJECT_NAME})
 
 ament_export_include_directories(include)

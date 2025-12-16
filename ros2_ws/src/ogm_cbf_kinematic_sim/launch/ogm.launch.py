@@ -10,19 +10,33 @@ def generate_launch_description():
     return LaunchDescription([
         Node(
             package='ogm_gridmap',
+            executable='pose_2_odom',
+            name='pose_2_odom',
+            output='log',
+            remappings=[
+                ('pose','/robot_pose'),
+                ('odom','/robot_odom'),
+                ],
+        ),
+        Node(
+            package='ogm_gridmap',
             executable='ogm_laserscan',
             name='map_builder',
-            output='screen',
+            output='log',
             remappings=[
                 ('map','/scan/in_mir'),
                 ('scan','/scan'),
+                ],
+            parameters=[
+                {"map_frame" : "odom"},
+                {"target_frame" : "base_footprint"},
                 ],
         ),
         Node(
             package='ogm_tools',
             executable='map_crop_memory',
             name='map_transformer',
-            output='screen',
+            output='log',
             remappings=[
                 ('map','/scan/in_mir'),
                 ('map_im','/map/in_mir'),

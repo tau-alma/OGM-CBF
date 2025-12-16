@@ -4,7 +4,7 @@ void Gridmap::scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
     {
         // handle the message and send it to the gridmap library to generate the gridmap.
         if (msg->header.frame_id == "front_laser_link") {
-        RCLCPP_INFO(this->get_logger(), "scan received");
+        RCLCPP_DEBUG(this->get_logger(), "scan received");
         int scans = msg->ranges.size();
         std::vector<LidarData> scans_arr;
         float lidar_to_base[4][4];
@@ -47,3 +47,4 @@ int main(int argc, char * argv[])
   rclcpp::shutdown();
   return 0;
 }
+
