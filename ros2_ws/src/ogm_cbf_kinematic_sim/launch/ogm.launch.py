@@ -10,6 +10,32 @@ def generate_launch_description():
     return LaunchDescription([
         Node(
             package='ogm_gridmap',
+            executable='scan2pcd',
+            name='scan2pcd_front',
+            output='log',
+            remappings=[
+                ('scan','/scan'),
+                ('pcd','/points/in_front_laser_link'),
+                ],
+            parameters=[
+                {"target_frame" : "front_laser_link"},
+                ],
+        ),
+        Node(
+            package='ogm_gridmap',
+            executable='scan2pcd',
+            name='scan2pcd_back',
+            output='log',
+            remappings=[
+                ('scan','/scan'),
+                ('pcd','/points/in_back_laser_link'),
+                ],
+            parameters=[
+                {"target_frame" : "back_laser_link"},
+                ],
+        ),
+        Node(
+            package='ogm_gridmap',
             executable='pose_2_odom',
             name='pose_2_odom',
             output='log',
