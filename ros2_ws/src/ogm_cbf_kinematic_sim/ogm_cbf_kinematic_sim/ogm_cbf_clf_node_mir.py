@@ -343,7 +343,7 @@ class MobileRobot(Node):
         # (Optionally) store a copy of the global map
         self.global_map = map_img.copy()
 
-        sdf_a = 4#0.8#self.get_parameter('sdf_a').value
+        sdf_a = 3#0.8#self.get_parameter('sdf_a').value
 
         # Create the signed distance function (phi_s)
         map_not = 255 - map_img
@@ -358,6 +358,10 @@ class MobileRobot(Node):
         phi_s_unsafe = -sdf_a * np.tanh( 0.005*phi_unsafe)
         phi_s = phi_s_unsafe + phi_s_safe
         self.sdf = phi_s.astype(np.float32)
+
+        print("----------------------------------------")
+        print(f"sdf at (100,100): {self.sdf[100,100]}")
+        print("----------------------------------------")
 
         #self.sdf = np.where(self.sdf != -1.0, self.sdf, 0.0)
 
@@ -408,9 +412,9 @@ class MobileRobot(Node):
         updating states
         """
         self.x = 100#msg.position.x
-        self.y = 100#msg.position.y
+        self.y = 120#msg.position.y
         self.x_real = 5#msg.position.x
-        self.y_real = 5#msg.position.y
+        self.y_real = 6#msg.position.y
         _, _, self.yaw = euler_from_quaternion((msg.orientation.x, msg.orientation.y,
                                             msg.orientation.z, msg.orientation.w))
         # Convert real-world pose to pixel coordinates using the map dimensions
@@ -490,6 +494,282 @@ class MobileRobot(Node):
         except Exception as e:
             self.get_logger().error(f"Error in publish_cbf: {e}")
 
+    # def controller(self):
+    #     """
+    #     The CBF-CLF-QP controller implementation.
+    #     (The equations remain mostly unchanged; make sure that all indexing now uses the dynamic map dimensions.)
+    #     """
+    #     global vel_prev, dPsi_prev
+    #     # Hyperparameters and reference values
+    #     C_alpha = 0.1#0.1#5#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
+    #     P_alpha = 1.0
+    #     Kv = 1.0
+    #     Kw = 0.01
+    #     Kd = 1.0
+    #     C_gamma = 1.0
+    #     P_gamma = 1.0
+    #     Vmax =0.25 #self.get_parameter('Vmax').value #1.0
+    #     Vmin = -0.25#self.get_parameter('Vmin').value #-1.0
+    #     Wmax = 0.5 * np.pi#self.get_parameter('Wmax').value #4 * np.pi
+    #     Wmin = -0.5 * np.pi#self.get_parameter('Wmin').value #-4 * np.pi
+    #     Delta_ub = 1.0#0.5#self.get_parameter('Delta_ub').value #0.5
+    #     Delta_lb = -1.0#-0.5#self.get_parameter('Delta_lb').value #-0.5
+    #     #heading = normalize_angle(np.pi - np.pi/6)
+    #     #heading = normalize_angle(np.pi)
+    #     heading = np.deg2rad(176)
+
+    #     # # Use the dynamic map indices (make sure x and y are integers)
+    #     # sdf = self.sdf[int(self.y), int(self.x)]
+    #     # #sdf = interpolate(self.sdf, self.x, self.y)
+    #     # dsdf_x_true = self.dsdf_x[int(self.y), int(self.x)]
+    #     # dsdf_y_true = self.dsdf_y[int(self.y), int(self.x)]
+    #     # dsdf_x_normalized = self.dsdf_x_normalized[int(self.y), int(self.x)]
+    #     # dsdf_y_normalized = self.dsdf_y_normalized[int(self.y), int(self.x)]
+
+    #     xw = self.x_real
+    #     yw = self.y_real
+    #     yaw = self.yaw
+
+    #     # Continuous SDF and gradient in WORLD coordinates
+    #     sdf = self.sdf_at_world(xw, yw)
+    #     dsdf_x_true, dsdf_y_true = self.sdf_grad_at_world(xw, yw)
+    #     ddsdf_xx, ddsdf_xy, ddsdf_yx, ddsdf_yy = self.hessian_at_world(xw, yw)
+
+       
+
+    #     # Normalized gradient (world)
+    #     grad_norm = math.hypot(dsdf_x_true, dsdf_y_true)
+    #     if grad_norm < 1e-6:
+    #         dsdf_x_normalized = 0.0
+    #         dsdf_y_normalized = 0.0
+    #     else:
+    #         dsdf_x_normalized = dsdf_x_true / grad_norm
+    #         dsdf_y_normalized = dsdf_y_true / grad_norm
+
+        
+    #     ddsdf_xx_normalized, ddsdf_xy_normalized, ddsdf_yx_normalized, ddsdf_yy_normalized = self.hessian_at_world(xw, yw, normalized=True)
+    #     # gyy_norm, gyx_norm = np.gradient(dsdf_y_normalized)
+    #     # gxy_norm, gxx_norm = np.gradient(dsdf_x_normalized)
+
+    #     # res = self.map_resolution
+
+    #     # ddsdf_xx_normalized = gxx_norm / (res ** 2)         # ∂²(∂φ/∂x_normalized) / ∂x²
+    #     # ddsdf_yy_normalized = gyy_norm / (res ** 2)         # ∂²(∂φ/∂y_normalized) / ∂y²
+    #     # ddsdf_xy_normalized = -gxy_norm / (res ** 2)        # ∂²(∂φ/∂x_normalized) / ∂x∂y
+    #     # ddsdf_yx_normalized = -gyx_norm / (res ** 2)        # ∂²(∂φ/∂y_normalized) / ∂y∂x
+        
+
+
+
+
+    #     yaw = self.yaw
+    #     l_a = 0.025
+    #     #beta = 0.05
+    #     l_s = -l_a#* (2*np.pi*beta + 1)
+    #     epsilon = 0.000001
+
+    #     if math.isnan(dsdf_x_normalized) or math.isnan(dsdf_y_normalized):
+    #         self.get_logger().error("NaN in normalized gradient!")
+    #         dsdf_x_normalized = dsdf_y_normalized = 0.0
+    #     if any(math.isnan(val) for val in [ddsdf_xx, ddsdf_xy, ddsdf_yx, ddsdf_yy]):
+    #         self.get_logger().error("NaN in second derivative!")
+    #         ddsdf_xx = ddsdf_xy =ddsdf_yx = ddsdf_yy = 0.0
+
+    #     x_vector = np.array([np.cos(yaw), np.sin(yaw)])
+    #     sdf_normalized_grad_vector = np.array([dsdf_x_normalized, dsdf_y_normalized])
+    
+
+
+    #     cosine_eta = np.dot(x_vector, sdf_normalized_grad_vector)
+    #     sine_eta = np.cross(x_vector, sdf_normalized_grad_vector)
+    #     eta = np.arctan2(sine_eta, cosine_eta)
+    #     eta = normalize_angle(eta)
+    #     # eta is sth minus yaw
+        
+    #     if math.isnan(eta):
+    #         self.get_logger().warn("eta is NaN!")
+    #         eta = 0.0
+
+    #     #cbf = sdf + l_s + l_a * (np.cos(eta) ** P_alpha)
+    #     cbf = sdf + l_s + l_a * (np.cos(eta))#+ beta*np.sin(eta))
+
+    #     #time_now = time()
+    #     #delta_time = time_now - self.time_cbf_prev if self.time_cbf_prev != 0.0 else 1e-5
+    #     #self.time_cbf_prev = time_now
+    #     delta_time = 1/controller_frequency#1/100
+    #     true_cbf_dot = (cbf - self.cbf_prev)/ delta_time
+
+    #     try:
+    #         dyaw_x = self.angular_velocity / self.linear_velocity * np.cos(yaw)
+    #         dyaw_y = self.angular_velocity / self.linear_velocity * np.sin(yaw)
+    #     except Exception as e:
+    #         self.get_logger().warn("Division by zero in dyaw computation")
+    #         dyaw_x = dyaw_y = 0.0
+
+    #     dx_vector_x = np.array([-np.sin(yaw), np.cos(yaw)]) * dyaw_x
+    #     dx_vector_y = np.array([-np.sin(yaw), np.cos(yaw)]) * dyaw_y
+
+    #     # dcbf_x = dsdf_x_true + P_alpha * l_a * (
+    #     #     np.dot(np.array([self.ddsdf_xx, self.ddsdf_yx]), x_vector) +
+    #     #     np.dot(sdf_normalized_grad_vector, dx_vector_x)
+    #     # ) * np.cos(eta) ** (P_alpha - 1)
+    #     # dcbf_y = dsdf_y_true + P_alpha * l_a * (
+    #     #     np.dot(np.array([self.ddsdf_xy, self.ddsdf_yy]), x_vector) +
+    #     #     np.dot(sdf_normalized_grad_vector, dx_vector_y)
+    #     # ) * np.cos(eta) ** (P_alpha - 1)
+    #     #dcbf_yaw = P_alpha * l_a * (-np.sin(eta)) * np.cos(eta) ** (P_alpha - 1)
+    #     dcbf_x = dsdf_x_true 
+    #     + l_a * (
+    #         np.dot(np.array([ddsdf_xx, ddsdf_yx]), x_vector) +
+    #         np.dot(sdf_normalized_grad_vector, dx_vector_x) #+
+
+    #       #  (np.dot(np.array([ddsdf_xx, ddsdf_yx]), x_vector) +
+    #       #  np.dot(sdf_normalized_grad_vector, dx_vector_x))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
+    #         #beta*((-np.sin(yaw)* dyaw_x)*dsdf_y_normalized + np.cos(yaw)*ddsdf_yx_normalized) - (np.cos(yaw)* dyaw_x* dsdf_x_normalized + np.sin(yaw)* ddsdf_xx_normalized)
+
+    #     ) 
+    #     dcbf_y = dsdf_y_true 
+        
+    #     + l_a * (
+    #         np.dot(np.array([ddsdf_xy, ddsdf_yy]), x_vector) +
+    #         np.dot(sdf_normalized_grad_vector, dx_vector_y)# +
+
+    #       #  ( np.dot(np.array([ddsdf_xy, ddsdf_yy]), x_vector) +
+    #       #  np.dot(sdf_normalized_grad_vector, dx_vector_y))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
+    #         #beta*((-np.sin(yaw)* dyaw_y)*dsdf_y_normalized + np.cos(yaw)*ddsdf_yy_normalized) - (np.cos(yaw)* dyaw_y* dsdf_x_normalized + np.sin(yaw)* ddsdf_xy_normalized)
+    #     )
+    #     dcbf_yaw = l_a * (-np.sin(eta) )#+ beta*(np.cos(eta)))
+
+        
+
+    #     #print(f"eta: {np.rad2deg(eta)}")
+
+    #     #print(f"dcbf_x: {dcbf_x}, dcbf_y: {dcbf_y}, dcbf_yaw: {dcbf_yaw}")
+    #     # print(f"""dcbf_x_cos{l_a * (
+    #     #     np.dot(np.array([self.ddsdf_xx, self.ddsdf_yx]), x_vector) +
+    #     #     np.dot(sdf_normalized_grad_vector, dx_vector_x) +
+
+    #     #     (np.dot(np.array([self.ddsdf_xx, self.ddsdf_yx]), x_vector) +
+    #     #     np.dot(sdf_normalized_grad_vector, dx_vector_x))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
+
+    #     # ) 
+    #     # }""")
+
+    #     # print(f"""dcbf_x_cos_arccos: {
+    #     #       l_a* (np.dot(np.array([self.ddsdf_xx, self.ddsdf_yx]), x_vector) +
+    #     #     np.dot(sdf_normalized_grad_vector, dx_vector_x))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
+    #     # }""")
+
+
+    #     # print(f"""dcbf_y_cos{
+    #     #     l_a * (
+    #     #     np.dot(np.array([self.ddsdf_xy, self.ddsdf_yy]), x_vector) +
+    #     #     np.dot(sdf_normalized_grad_vector, dx_vector_y) +
+
+    #     #     ( np.dot(np.array([self.ddsdf_xy, self.ddsdf_yy]), x_vector) +
+    #     #     np.dot(sdf_normalized_grad_vector, dx_vector_y))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
+
+    #     # )
+    #     #     }""")
+        
+    #     # print(f"""dcbf_y_cos_arccos: {
+    #     #       l_a*  ( np.dot(np.array([self.ddsdf_xy, self.ddsdf_yy]), x_vector) +
+    #     #     np.dot(sdf_normalized_grad_vector, dx_vector_y))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
+    #     # }""")
+
+    #     Vref = Vmax
+    #     K_Wref = 0.5
+    #     Wref = K_Wref * normalize_difference(heading - yaw)
+    #     P_mat = np.diag([Kv, Kw, Kd])
+    #     q = np.array([-Kv * Vref, -Kw * Wref, 0.0])
+
+    #     # Set up inequality constraints for the QP
+    #     G = np.array([
+    #         [1.0, 0, 0],
+    #         [-1.0, 0, 0],
+    #         [0, 1.0, 0],
+    #         [0, -1.0, 0],
+    #         [0, 0, 1.0],
+    #         [0, 0, -1.0],
+    #         [0, 0, 0],
+    #         [0, 0, 0]
+    #     ])
+    #     h_vec = np.array([Vmax, -Vmin, Wmax, -Wmin, Delta_ub, -Delta_lb, 0, 0])
+    #     G[6][0] = -((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))
+    #     G[6][1] = -dcbf_yaw
+    #     G[6][2] = 0
+    #     h_vec[6] = C_alpha * cbf
+
+    #     G[7][0] = 0
+    #     G[7][1] = normalize_difference(yaw - heading)
+    #     G[7][2] = -1
+    #     V_val = 0.5 * (normalize_difference(yaw - heading))**2
+    #     h_vec[7] = -C_gamma * V_val
+
+    #     try:
+    #         [vel, dPsi, Delta] = solve_qp(P_mat, q, G, h_vec, solver='quadprog')
+    #         #dPsi = -dPsi
+    #         vel = vel#/0.05
+    #         dPsi = dPsi
+
+    #         vel_prev = vel
+    #         dPsi_prev = dPsi
+
+    #         cbf_dot_alpha_cbf = (dcbf_x * np.cos(yaw) + dcbf_y * np.sin(yaw)) * vel + dcbf_yaw * dPsi + C_alpha * cbf
+    #         cbf_dot = (dcbf_x * np.cos(yaw) + dcbf_y * np.sin(yaw)) * vel + dcbf_yaw * dPsi
+    #         self.cbf_array = [float(cbf), float(cbf_dot), float(cbf_dot_alpha_cbf)]
+    #         self.linear_velocity = float(vel)
+    #         self.angular_velocity = float(dPsi)
+
+    #         self.cbf_prev = cbf
+
+            
+             
+            
+    #     except Exception as e:
+    #         self.get_logger().error("Optimization failed, using previous solution.")
+    #         vel, dPsi = 0.0, 0.0
+    #         Delta = 0
+
+    #         vel_prev = vel
+    #         dPsi_prev = dPsi
+
+    #         cbf_dot_alpha_cbf = (dcbf_x * np.cos(yaw) + dcbf_y * np.sin(yaw)) * vel + dcbf_yaw * dPsi + C_alpha * cbf
+    #         cbf_dot = (dcbf_x * np.cos(yaw) + dcbf_y * np.sin(yaw)) * vel + dcbf_yaw * dPsi
+    #         self.cbf_array = [float(cbf), float(cbf_dot), float(cbf_dot_alpha_cbf)]
+    #         self.linear_velocity = float(vel)
+    #         self.angular_velocity = float(dPsi)
+
+    #         self.cbf_prev = cbf
+
+            
+    #     print(f"A (Av) is: {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))}")
+    #     print(f"B (Bw) is: {dcbf_yaw}")
+    #     print(f"QP Solution: vel={vel}, omega={dPsi}")
+    #     print(f"Av is{((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel}")
+    #     print(f"Bw is {dcbf_yaw * dPsi}")
+    #     print(f"Av + Bw is {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel + dcbf_yaw * dPsi}")
+    #     print(f"cbf: {cbf}, cbf_dot: {cbf_dot}, cbf_dot + alpha*cbf: {cbf_dot_alpha_cbf}")
+    #     print(f"cbf_dot (true): {true_cbf_dot}, difference: {cbf_dot - true_cbf_dot}")
+    #     print(f"sdf: {sdf}, eta (deg): {np.rad2deg(eta)}, cbf-sdf: {cbf - sdf}")
+    #     print("--------------------------------------------------")
+    #     if cbf < 0:
+    #         sys.exit(1)
+        
+    #         # print(f"A (Av) is: {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))}")
+    #         # print(f"B (Bw) is: {dcbf_yaw}")
+    #         #print(f"QP Solution: vel={vel}, omega={dPsi}")
+    #         # print(f"Av is{((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel}")
+    #         # print(f"Bw is {dcbf_yaw * dPsi}")
+    #         # print(f"Av + Bw is {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel + dcbf_yaw * dPsi}")
+    #         #print(f"cbf: {cbf}, cbf_dot: {cbf_dot}, cbf_dot + alpha*cbf: {cbf_dot_alpha_cbf}")
+    #         # print(f"cbf_dot (true): {true_cbf_dot}, difference: {cbf_dot - true_cbf_dot}")
+    #         # print(f"sdf: {sdf}, eta (deg): {np.rad2deg(eta)}, cbf-sdf: {cbf - sdf}")
+    #         # print("--------------------------------------------------")
+
+    #         #sys.exit(1)
+
+        
     def controller(self):
         """
         The CBF-CLF-QP controller implementation.
@@ -497,7 +777,7 @@ class MobileRobot(Node):
         """
         global vel_prev, dPsi_prev
         # Hyperparameters and reference values
-        C_alpha = 0.1#0.1#5#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
+        C_alpha = 0.1#5#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
         P_alpha = 1.0
         Kv = 1.0
         Kw = 0.01
@@ -506,13 +786,12 @@ class MobileRobot(Node):
         P_gamma = 1.0
         Vmax =0.25 #self.get_parameter('Vmax').value #1.0
         Vmin = -0.25#self.get_parameter('Vmin').value #-1.0
-        Wmax = 0.5 * np.pi#self.get_parameter('Wmax').value #4 * np.pi
-        Wmin = -0.5 * np.pi#self.get_parameter('Wmin').value #-4 * np.pi
+        Wmax = 0.25 * np.pi#self.get_parameter('Wmax').value #4 * np.pi
+        Wmin = -0.25* np.pi#self.get_parameter('Wmin').value #-4 * np.pi
         Delta_ub = 1.0#0.5#self.get_parameter('Delta_ub').value #0.5
         Delta_lb = -1.0#-0.5#self.get_parameter('Delta_lb').value #-0.5
-        #heading = normalize_angle(np.pi - np.pi/6)
+        heading = normalize_angle(np.deg2rad(176))
         #heading = normalize_angle(np.pi)
-        heading = np.deg2rad(176)
 
         # # Use the dynamic map indices (make sure x and y are integers)
         # sdf = self.sdf[int(self.y), int(self.x)]
@@ -542,26 +821,12 @@ class MobileRobot(Node):
             dsdf_x_normalized = dsdf_x_true / grad_norm
             dsdf_y_normalized = dsdf_y_true / grad_norm
 
-        
-        ddsdf_xx_normalized, ddsdf_xy_normalized, ddsdf_yx_normalized, ddsdf_yy_normalized = self.hessian_at_world(xw, yw, normalized=True)
-        # gyy_norm, gyx_norm = np.gradient(dsdf_y_normalized)
-        # gxy_norm, gxx_norm = np.gradient(dsdf_x_normalized)
-
-        # res = self.map_resolution
-
-        # ddsdf_xx_normalized = gxx_norm / (res ** 2)         # ∂²(∂φ/∂x_normalized) / ∂x²
-        # ddsdf_yy_normalized = gyy_norm / (res ** 2)         # ∂²(∂φ/∂y_normalized) / ∂y²
-        # ddsdf_xy_normalized = -gxy_norm / (res ** 2)        # ∂²(∂φ/∂x_normalized) / ∂x∂y
-        # ddsdf_yx_normalized = -gyx_norm / (res ** 2)        # ∂²(∂φ/∂y_normalized) / ∂y∂x
-        
-
-
 
 
         yaw = self.yaw
-        l_a = 0.15
-        beta = 0.05
-        l_s = -l_a* (2*np.pi*beta + 1)
+        l_a = 0.025
+        beta = 0.0#0.005
+        l_s = -l_a#* (2*np.pi*beta + 1)
         epsilon = 0.000001
 
         if math.isnan(dsdf_x_normalized) or math.isnan(dsdf_y_normalized):
@@ -573,21 +838,17 @@ class MobileRobot(Node):
 
         x_vector = np.array([np.cos(yaw), np.sin(yaw)])
         sdf_normalized_grad_vector = np.array([dsdf_x_normalized, dsdf_y_normalized])
-    
-
-
-        cosine_eta = np.dot(x_vector, sdf_normalized_grad_vector)
-        sine_eta = np.cross(x_vector, sdf_normalized_grad_vector)
+        cosine_eta = np.dot(sdf_normalized_grad_vector, x_vector)
+        sine_eta = np.cross(sdf_normalized_grad_vector, x_vector)
         eta = np.arctan2(sine_eta, cosine_eta)
         eta = normalize_angle(eta)
-        # eta is sth minus yaw
         
         if math.isnan(eta):
             self.get_logger().warn("eta is NaN!")
             eta = 0.0
 
         #cbf = sdf + l_s + l_a * (np.cos(eta) ** P_alpha)
-        cbf = sdf + l_s + l_a * (np.cos(eta)+ beta*np.sin(eta))
+        cbf = sdf + l_s + l_a * (np.cos(eta)+ beta*eta)
 
         #time_now = time()
         #delta_time = time_now - self.time_cbf_prev if self.time_cbf_prev != 0.0 else 1e-5
@@ -619,10 +880,8 @@ class MobileRobot(Node):
             np.dot(np.array([ddsdf_xx, ddsdf_yx]), x_vector) +
             np.dot(sdf_normalized_grad_vector, dx_vector_x) +
 
-            (np.dot(np.array([ddsdf_xx, ddsdf_yx]), x_vector) +
-            np.dot(sdf_normalized_grad_vector, dx_vector_x))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
-            #beta*((-np.sin(yaw)* dyaw_x)*dsdf_y_normalized + np.cos(yaw)*ddsdf_yx_normalized) - (np.cos(yaw)* dyaw_x* dsdf_x_normalized + np.sin(yaw)* ddsdf_xx_normalized)
-
+            beta*((np.dot(np.array([ddsdf_xx, ddsdf_yx]), x_vector) +
+            np.dot(sdf_normalized_grad_vector, dx_vector_x))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon)))
         ) 
         dcbf_y = dsdf_y_true 
         
@@ -630,17 +889,16 @@ class MobileRobot(Node):
             np.dot(np.array([ddsdf_xy, ddsdf_yy]), x_vector) +
             np.dot(sdf_normalized_grad_vector, dx_vector_y) +
 
-            ( np.dot(np.array([ddsdf_xy, ddsdf_yy]), x_vector) +
-            np.dot(sdf_normalized_grad_vector, dx_vector_y))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
-            #beta*((-np.sin(yaw)* dyaw_y)*dsdf_y_normalized + np.cos(yaw)*ddsdf_yy_normalized) - (np.cos(yaw)* dyaw_y* dsdf_x_normalized + np.sin(yaw)* ddsdf_xy_normalized)
+            beta*(( np.dot(np.array([ddsdf_xy, ddsdf_yy]), x_vector) +
+            np.dot(sdf_normalized_grad_vector, dx_vector_y))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon)))
         )
-        dcbf_yaw = l_a * (-np.sin(eta) + beta*(np.cos(eta)))
+        dcbf_yaw = l_a * (-np.sin(eta) + beta)
 
         
 
-        #print(f"eta: {np.rad2deg(eta)}")
+        print(f"eta: {np.rad2deg(eta)}")
 
-        #print(f"dcbf_x: {dcbf_x}, dcbf_y: {dcbf_y}, dcbf_yaw: {dcbf_yaw}")
+        print(f"dcbf_x: {dcbf_x}, dcbf_y: {dcbf_y}, dcbf_yaw: {dcbf_yaw}")
         # print(f"""dcbf_x_cos{l_a * (
         #     np.dot(np.array([self.ddsdf_xx, self.ddsdf_yx]), x_vector) +
         #     np.dot(sdf_normalized_grad_vector, dx_vector_x) +
@@ -704,7 +962,6 @@ class MobileRobot(Node):
 
         try:
             [vel, dPsi, Delta] = solve_qp(P_mat, q, G, h_vec, solver='quadprog')
-            #dPsi = -dPsi
             vel = vel#/0.05
             dPsi = dPsi
 
@@ -720,7 +977,17 @@ class MobileRobot(Node):
             self.cbf_prev = cbf
 
             
-             
+            print(f"A (Av) is: {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))}")
+            print(f"B (Bw) is: {dcbf_yaw}")
+            print(f"QP Solution: vel={vel}, omega={dPsi}")
+            print(f"Av is{((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel}")
+            print(f"Bw is {dcbf_yaw * dPsi}")
+            print(f"Av + Bw is {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel + dcbf_yaw * dPsi}")
+            print(f"cbf: {cbf}, cbf_dot: {cbf_dot}, cbf_dot + alpha*cbf: {cbf_dot_alpha_cbf}")
+            print(f"cbf_dot (true): {true_cbf_dot}, difference: {cbf_dot - true_cbf_dot}")
+            print(f"sdf: {sdf}, eta (deg): {np.rad2deg(eta)}, cbf-sdf: {cbf - sdf}")
+            print("--------------------------------------------------")
+            
             
         except Exception as e:
             self.get_logger().error("Optimization failed, using previous solution.")
@@ -739,34 +1006,18 @@ class MobileRobot(Node):
             self.cbf_prev = cbf
 
             
-        print(f"A (Av) is: {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))}")
-        print(f"B (Bw) is: {dcbf_yaw}")
-        print(f"QP Solution: vel={vel}, omega={dPsi}")
-        print(f"Av is{((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel}")
-        print(f"Bw is {dcbf_yaw * dPsi}")
-        print(f"Av + Bw is {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel + dcbf_yaw * dPsi}")
-        print(f"cbf: {cbf}, cbf_dot: {cbf_dot}, cbf_dot + alpha*cbf: {cbf_dot_alpha_cbf}")
-        print(f"cbf_dot (true): {true_cbf_dot}, difference: {cbf_dot - true_cbf_dot}")
-        print(f"sdf: {sdf}, eta (deg): {np.rad2deg(eta)}, cbf-sdf: {cbf - sdf}")
-        print("--------------------------------------------------")
-        if cbf < 0:
+            print(f"A (Av) is: {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))}")
+            print(f"B (Bw) is: {dcbf_yaw}")
+            print(f"QP Solution: vel={vel}, omega={dPsi}")
+            print(f"Av is{((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel}")
+            print(f"Bw is {dcbf_yaw * dPsi}")
+            print(f"Av + Bw is {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel + dcbf_yaw * dPsi}")
+            print(f"cbf: {cbf}, cbf_dot: {cbf_dot}, cbf_dot + alpha*cbf: {cbf_dot_alpha_cbf}")
+            print(f"cbf_dot (true): {true_cbf_dot}, difference: {cbf_dot - true_cbf_dot}")
+            print(f"sdf: {sdf}, eta (deg): {np.rad2deg(eta)}, cbf-sdf: {cbf - sdf}")
+            print("--------------------------------------------------")
+
             sys.exit(1)
-        
-            # print(f"A (Av) is: {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))}")
-            # print(f"B (Bw) is: {dcbf_yaw}")
-            #print(f"QP Solution: vel={vel}, omega={dPsi}")
-            # print(f"Av is{((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel}")
-            # print(f"Bw is {dcbf_yaw * dPsi}")
-            # print(f"Av + Bw is {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel + dcbf_yaw * dPsi}")
-            #print(f"cbf: {cbf}, cbf_dot: {cbf_dot}, cbf_dot + alpha*cbf: {cbf_dot_alpha_cbf}")
-            # print(f"cbf_dot (true): {true_cbf_dot}, difference: {cbf_dot - true_cbf_dot}")
-            # print(f"sdf: {sdf}, eta (deg): {np.rad2deg(eta)}, cbf-sdf: {cbf - sdf}")
-            # print("--------------------------------------------------")
-
-            #sys.exit(1)
-
-        
-
 
 def main(args=None):
     rclpy.init(args=args)
