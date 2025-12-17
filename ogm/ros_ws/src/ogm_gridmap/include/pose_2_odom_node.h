@@ -24,7 +24,7 @@ class Pose2OdomNode  : public rclcpp::Node
 
 	    nav_msgs::msg::Odometry msg_odom;
 	    msg_odom.header.stamp = now;
-	    msg_odom.header.frame_id = this->target_frame;
+	    msg_odom.header.frame_id = this->map_frame;
 	    msg_odom.child_frame_id = this->target_frame;
 
 	    msg_odom.pose.pose = *msg_pose;

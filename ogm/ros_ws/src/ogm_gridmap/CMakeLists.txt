@@ -78,6 +78,23 @@ install(TARGETS
 scan2pcd
   DESTINATION lib/${PROJECT_NAME})
 
+add_executable(pcd_transformer src/main_pcd_transformer.cpp)
+target_include_directories(pcd_transformer PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+ament_target_dependencies(pcd_transformer
+	rclcpp
+	std_msgs
+	sensor_msgs
+	nav_msgs
+	geometry_msgs
+	pcl_ros
+	pcl_conversions
+	)
+install(TARGETS
+pcd_transformer
+  DESTINATION lib/${PROJECT_NAME})
+
 ament_export_include_directories(include)
 
 ament_package()
