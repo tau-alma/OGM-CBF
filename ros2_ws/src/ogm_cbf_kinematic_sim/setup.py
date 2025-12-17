@@ -32,6 +32,8 @@ setup(
             'kinematic_diff_drive_sim_node = ogm_cbf_kinematic_sim.kinematic_diff_drive_sim_node:main',
             'map_viz_node = ogm_cbf_kinematic_sim.map_viz_node:main',
             'wandb_logger_node = ogm_cbf_kinematic_sim.wandb_logger_node:main',
+            'map_publisher_node = ogm_cbf_kinematic_sim.map.map_publisher_node:main',
+            'start_pose_selector_node = ogm_cbf_kinematic_sim.start_pose_selector_node:main',
         ],
     },
 )

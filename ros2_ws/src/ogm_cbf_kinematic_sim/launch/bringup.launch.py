@@ -16,8 +16,8 @@ def generate_launch_description():
     return LaunchDescription([
         Node(
             package='ogm_cbf_kinematic_sim',
-            executable='ogm_cbf_clf_node_mir',
-            name='cbf_clf',
+            executable='map_publisher_node',
+            name='map_publisher',
             output='screen',
             parameters=[ params ],   # <<< inline dict
         ),
@@ -37,8 +37,8 @@ def generate_launch_description():
         ),
         Node(
             package='ogm_cbf_kinematic_sim',
-            executable='wandb_logger_node',
-            name='wandb_logger',
+            executable='start_pose_selector_node',
+            name='start_pose_selector',
             output='screen',
             parameters=[ params ],
         ),
