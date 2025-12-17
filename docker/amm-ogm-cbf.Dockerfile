@@ -15,8 +15,10 @@ RUN apt-get update && apt-get -y upgrade && rm -rf /var/lib/apt/lists/*
 RUN apt-get update && apt-get -y install clang udev ros-humble-image-transport ros-humble-image-transport-plugins ros-humble-image-proc ros-humble-depth-image-proc ros-humble-imu-pipeline ros-humble-tf-transformations ros-humble-odom-to-tf-ros2 python3-scipy \
    && rm -rf /var/lib/apt/lists/*
 # ros generic usefull tools
-RUN apt-get update && apt-get -y install git tree neofetch guvcview libyaml-cpp-dev libboost-all-dev zlib1g-dev libeigen3-dev linux-libc-dev nlohmann-json3-dev ros-humble-rviz2 ros-humble-rqt-tf-tree ros-humble-rqt-image-view ros-humble-rqt-bag ros-humble-rqt-graph vim \
+RUN apt-get update && apt-get -y install git tree neofetch guvcview libyaml-cpp-dev libboost-all-dev zlib1g-dev libeigen3-dev linux-libc-dev nlohmann-json3-dev ros-humble-rviz2 ros-humble-rqt-tf-tree ros-humble-rqt-image-view ros-humble-rqt-bag ros-humble-rqt-graph vim tmux \
    && rm -rf /var/lib/apt/lists/*
+
+COPY docker/tmux.conf /root/.tmux.conf
 
 RUN apt-get update && apt-get -y install libsdl2-dev freeglut3-dev ros-humble-pcl-conversions ros-humble-pcl-ros \
    && rm -rf /var/lib/apt/lists/*
