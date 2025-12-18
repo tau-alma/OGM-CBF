@@ -85,7 +85,10 @@ class GridmapNode  : public rclcpp::Node
       width = std::ceil(_width / cell_size);
       RCLCPP_INFO(this->get_logger(), "width: %f (%u)", _width, width);
 
-      gridmap = std::make_shared<Gridmap>(Gridmap(height,width,cell_size));
+      float s_target = this->declare_parameter("s_target", .95);
+      RCLCPP_INFO(this->get_logger(), "s_target: %f", s_target);
+
+      gridmap = std::make_shared<Gridmap>(Gridmap(height,width,cell_size, s_target));
 
       pub_grid = this->create_publisher<nav_msgs::msg::OccupancyGrid>("gridmap", 1);
 

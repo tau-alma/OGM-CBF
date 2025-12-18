@@ -13,7 +13,7 @@ class Gridmap
     float origin_y;
     float cell_size;
 
-    static constexpr float S_TARGET = 0.95;
+    float s_target;
 
     static constexpr float HIT_DIST = 0.05;
 
@@ -141,13 +141,14 @@ class Gridmap
 
 
   public:
-    Gridmap(int _h, int _w, float _cell_size)
+    Gridmap(int _h, int _w, float _cell_size, _s_target)
     {
       h = _h;
       w = _w;
       origin_x = 0.;
       origin_y = 0.;
       cell_size = _cell_size;
+      s_target = _s_target;
 
       map = Eigen::MatrixXf::Constant(h,w,0.5);
     }
