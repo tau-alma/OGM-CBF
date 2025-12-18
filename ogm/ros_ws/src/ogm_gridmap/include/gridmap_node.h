@@ -9,6 +9,9 @@
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 
+#include <opencv2/opencv.hpp>   
+#include <cv_bridge/cv_bridge.h>
+
 #include "gridmap.h"
 
 class GridmapNode  : public rclcpp::Node
@@ -16,6 +19,7 @@ class GridmapNode  : public rclcpp::Node
   private:
     
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr pub_grid;
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_img;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcd;
 
     std::string map_frame;
@@ -26,10 +30,8 @@ class GridmapNode  : public rclcpp::Node
 
     std::shared_ptr<Gridmap> gridmap;
 
-    void publish_grid()
+    void publish_grid(rclcpp::Time& now)
     {
-      rclcpp::Time now = this->get_clock()->now();
-
       nav_msgs::msg::OccupancyGrid msg_out;
 	    msg_out.header.stamp = now;
 	    msg_out.header.frame_id = this->map_frame;
@@ -52,6 +54,31 @@ class GridmapNode  : public rclcpp::Node
 
     }
 
+    void publish_image(rclcpp::Time& now)
+    {
+
+      //CV_8S
+      std::vector<int8_t> data = gridmap->report_int8();
+      cv::Mat img(
+        gridmap->get_height(),
+        gridmap->get_width(),
+        CV_8S,
+        data.data()
+        );
+      //img.data = gridmap->report_int8();
+
+      cv_bridge::CvImage cv_bridge_image;
+      cv_bridge_image.encoding = sensor_msgs::image_encodings::MONO8;
+      cv_bridge_image.image = img;
+
+      sensor_msgs::msg::Image msg_img = *(cv_bridge_image.toImageMsg());
+	    msg_img.header.stamp = now;
+	    msg_img.header.frame_id = this->map_frame;
+
+      pub_img->publish(msg_img);
+
+    }
+
     void callback_pcd(
         const sensor_msgs::msg::PointCloud2::SharedPtr msg_pcd
         )
@@ -65,7 +92,9 @@ class GridmapNode  : public rclcpp::Node
 
       gridmap->update(pcd);
 
-      publish_grid();
+      rclcpp::Time ts(msg_pcd->header.stamp);
+      publish_grid(ts);
+      publish_image(ts);
     }
   
   public:
@@ -91,6 +120,7 @@ class GridmapNode  : public rclcpp::Node
       gridmap = std::make_shared<Gridmap>(Gridmap(height,width,cell_size, s_target));
 
       pub_grid = this->create_publisher<nav_msgs::msg::OccupancyGrid>("gridmap", 1);
+      pub_img = this->create_publisher<sensor_msgs::msg::Image>("imgmap", 1);
 
       sub_pcd = this->create_subscription<sensor_msgs::msg::PointCloud2>(
 		      "pcd",

@@ -113,6 +113,8 @@ ament_target_dependencies(occgrid
   nav_msgs
 	pcl_ros
 	pcl_conversions
+  OpenCV
+  cv_bridge
 	)
 install(TARGETS
 occgrid

@@ -42,8 +42,8 @@ class Gridmap
       std::tie(i,j) = coord2sub(x, y);
       if (is_in_map(i, j))
       {
-        float p_z_occ = (1 + S_TARGET) / 2;
-        float p_z_free = (1 - S_TARGET) / 2;
+        float p_z_occ = (1 + s_target) / 2;
+        float p_z_free = (1 - s_target) / 2;
         float p_m = map(i,j);
         map(i,j) = p_z_occ*p_m / (p_z_occ*p_m + p_z_free*p_m);
       }
@@ -55,8 +55,8 @@ class Gridmap
       std::tie(i,j) = coord2sub(x, y);
       if (is_in_map(i, j))
       {
-        float p_z_occ = (1 + S_TARGET) / 2;
-        float p_z_free = (1 - S_TARGET) / 2;
+        float p_z_occ = (1 + s_target) / 2;
+        float p_z_free = (1 - s_target) / 2;
         float p_m = map(i,j);
         map(i,j) = p_z_free*p_m / (p_z_occ*p_m + p_z_free*p_m);
       }
@@ -141,7 +141,7 @@ class Gridmap
 
 
   public:
-    Gridmap(int _h, int _w, float _cell_size, _s_target)
+    Gridmap(int _h, int _w, float _cell_size, float _s_target)
     {
       h = _h;
       w = _w;
