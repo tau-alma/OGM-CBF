@@ -124,7 +124,7 @@ class TransformerNode  : public rclcpp::Node
           try
           {
             transform = std::make_shared<geometry_msgs::msg::TransformStamped>(
-            tf_buffer->lookupTransform(to_frame, from_frame, tf2::TimePointZero));
+            tf_buffer->lookupTransform(from_frame, to_frame, tf2::TimePointZero));
           }
           catch (const tf2::TransformException & ex)
           {
@@ -133,6 +133,19 @@ class TransformerNode  : public rclcpp::Node
           }
         }
         RCLCPP_INFO(this->get_logger(), "acquired link to sensor transform");
+        RCLCPP_INFO(this->get_logger(),
+            "t=(%f, %f %f)",
+            transform->transform.translation.x,
+            transform->transform.translation.y,
+            transform->transform.translation.z
+            );
+        RCLCPP_INFO(this->get_logger(),
+            "q=(%f, %f, %f, %f)",
+            transform->transform.rotation.x,
+            transform->transform.rotation.y,
+            transform->transform.rotation.z,
+            transform->transform.rotation.w
+            );
       }
       else
       {
@@ -157,7 +170,7 @@ class TransformerNode  : public rclcpp::Node
     {
       rclcpp::Time pcd_stamp(msg_pcd->header.stamp);
       
-      Eigen::Matrix4f T_map2sensor = T_odom2link * T_link2sensor;
+      Eigen::Matrix4f T_map2sensor =  T_odom2link * T_link2sensor;
      
       sensor_msgs::msg::PointCloud2 msg_out;
       pcl_ros::transformPointCloud (T_map2sensor, *msg_pcd, msg_out);
@@ -178,7 +191,7 @@ class TransformerNode  : public rclcpp::Node
       target_frame = this->declare_parameter("target_frame", "target_frame");
       RCLCPP_INFO(this->get_logger(), "target_frame: %s", target_frame.c_str());
 
-      Eigen::Matrix4f T_link2sensor = get_T_matrix(link_frame, target_frame);
+      T_link2sensor = get_T_matrix(link_frame, target_frame);
 
       pub_pcd = this->create_publisher<sensor_msgs::msg::PointCloud2>("pcd_out", 1);
  

@@ -20,7 +20,7 @@ class Pose2OdomNode  : public rclcpp::Node
         const geometry_msgs::msg::Pose::ConstSharedPtr msg_pose
         )
     {
-            rclcpp::Time now = this->get_clock()->now();
+      rclcpp::Time now = this->get_clock()->now();
 
 	    nav_msgs::msg::Odometry msg_odom;
 	    msg_odom.header.stamp = now;

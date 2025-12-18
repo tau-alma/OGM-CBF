@@ -95,6 +95,22 @@ install(TARGETS
 pcd_transformer
   DESTINATION lib/${PROJECT_NAME})
 
+add_executable(occgrid src/main_gridmap.cpp)
+target_include_directories(occgrid PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+ament_target_dependencies(occgrid
+	rclcpp
+	std_msgs
+	sensor_msgs
+  nav_msgs
+	pcl_ros
+	pcl_conversions
+	)
+install(TARGETS
+occgrid
+  DESTINATION lib/${PROJECT_NAME})
+
 ament_export_include_directories(include)
 
 ament_package()

@@ -25,16 +25,19 @@ class Scan2PcdNode  : public rclcpp::Node
     {
       if (msg_scan->header.frame_id == target_frame)
       {    
-      pcl::PointCloud<pcl::PointXYZ> pcd;
+      pcl::PointCloud<pcl::PointXYZI> pcd;
+
+      // push origin ref point
+	    pcd.push_back(pcl::PointXYZI(0,0,0,0.0));
 
       for (int i = 0; i < msg_scan->ranges.size() ; i++)
       {
           double ang = msg_scan->angle_min + i * msg_scan->angle_increment;
           if (msg_scan->ranges.at(i) != NAN)
-	  {
+	        {
             float x = (msg_scan->ranges.at(i) * cos(ang));
             float y = (msg_scan->ranges.at(i) * sin(ang));
-	    pcd.push_back(pcl::PointXYZ(x,y,0));
+	          pcd.push_back(pcl::PointXYZI(x,y,0,1.0));
           }
       }
 
