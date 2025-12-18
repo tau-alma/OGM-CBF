@@ -160,6 +160,7 @@ class TransformerNode  : public rclcpp::Node
         )
     {
       rclcpp::Time odom_stamp(msg_odom->header.stamp);
+      //RCLCPP_INFO(this->get_logger(), "odom at %lf", odom_stamp.seconds());
 
       T_odom2link = get_T_matrix(msg_odom);
     }
@@ -169,6 +170,7 @@ class TransformerNode  : public rclcpp::Node
         )
     {
       rclcpp::Time pcd_stamp(msg_pcd->header.stamp);
+      //RCLCPP_INFO(this->get_logger(), "pcd at %lf", pcd_stamp.seconds());
       
       Eigen::Matrix4f T_map2sensor =  T_odom2link * T_link2sensor;
      

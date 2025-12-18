@@ -52,13 +52,20 @@ install(TARGETS
 ogm_pointcloud
   DESTINATION lib/${PROJECT_NAME})
 
-add_executable(pose_2_odom src/main_pose_2_odom.cpp)
-target_include_directories(pose_2_odom PUBLIC
+add_executable(offset_odom src/main_offset_odom.cpp)
+target_include_directories(offset_odom PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
-ament_target_dependencies(pose_2_odom rclcpp std_msgs sensor_msgs nav_msgs geometry_msgs)
+ament_target_dependencies(offset_odom
+  rclcpp
+  std_msgs
+  sensor_msgs
+  nav_msgs
+  geometry_msgs
+  pcl_ros
+)
 install(TARGETS
-pose_2_odom
+offset_odom
   DESTINATION lib/${PROJECT_NAME})
 
 add_executable(scan2pcd src/main_scan2pcd.cpp)

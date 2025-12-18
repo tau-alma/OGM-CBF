@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 REPO=$(cd ..; pwd)
+xhost + local:docker
 docker run -it --rm \
   --network=host \
   --ipc=host \

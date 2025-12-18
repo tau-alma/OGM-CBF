@@ -18,7 +18,11 @@ class GridmapNode  : public rclcpp::Node
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr pub_grid;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcd;
 
-    std::string map_frame = "odom";
+    std::string map_frame;
+
+    float cell_size;
+    uint32_t height;
+    uint32_t width;
 
     std::shared_ptr<Gridmap> gridmap;
 
@@ -67,8 +71,21 @@ class GridmapNode  : public rclcpp::Node
   public:
     GridmapNode() : Node("gridmap")
     {
+      map_frame = this->declare_parameter("map_frame", "map_frame");
+      RCLCPP_INFO(this->get_logger(), "map_frame: %s", map_frame.c_str());
 
-      gridmap = std::make_shared<Gridmap>(Gridmap(400,400,0.05));
+      cell_size = this->declare_parameter("cell_size", 1.0);
+      RCLCPP_INFO(this->get_logger(), "cell_size: %f", cell_size);
+
+      float _height = this->declare_parameter("height", 20.0);
+      height = std::ceil(_height / cell_size);
+      RCLCPP_INFO(this->get_logger(), "height: %f (%u)", _height, height);
+
+      float _width = this->declare_parameter("width", 20.0);
+      width = std::ceil(_width / cell_size);
+      RCLCPP_INFO(this->get_logger(), "width: %f (%u)", _width, width);
+
+      gridmap = std::make_shared<Gridmap>(Gridmap(height,width,cell_size));
 
       pub_grid = this->create_publisher<nav_msgs::msg::OccupancyGrid>("gridmap", 1);
 

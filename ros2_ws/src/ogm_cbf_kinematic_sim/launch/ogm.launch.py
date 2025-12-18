@@ -51,13 +51,32 @@ def generate_launch_description():
             remappings=[
                 ('pcd_in','points/in_front_laser_link'),
                 ('pcd_out','points/in_odom'),
+                ('odom','/odom_in_map'),
+                ],
+            parameters=[
+                {"use_sim_time" : use_sim_time},
+                {"odom_frame" : "map"},
+                {"link_frame" : "base_link"},
+                {"target_frame" : "front_laser_link"},
+                ],
+        )
+
+    gridmap = Node(
+            package='ogm_gridmap',
+            executable='occgrid',
+            name='gridmap',
+            output='screen',
+            namespace=ns,
+            remappings=[
+                ('pcd','points/in_odom'),
                 ('odom','/odom'),
                 ],
             parameters=[
                 {"use_sim_time" : use_sim_time},
-                {"odom_frame" : "odom"},
-                {"link_frame" : "base_footprint"},
-                {"target_frame" : "front_laser_link"},
+                {"map_frame" : "map"},
+                {"cell_size" : 0.05},
+                {"height" : 20.},
+                {"width" : 20.},
                 ],
         )
 
@@ -66,4 +85,5 @@ def generate_launch_description():
         front_scan_2_front_pcd,
         rear_scan_2_rear_pcd,
         rear_pcd_2_odom_pcd,
+        gridmap
     ])
