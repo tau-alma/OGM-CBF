@@ -77,6 +77,7 @@ def generate_launch_description():
                 {"cell_size" : 0.05},
                 {"height" : 20.},
                 {"width" : 20.},
+                {"s_target" : 0.95},
                 ],
         )
 
