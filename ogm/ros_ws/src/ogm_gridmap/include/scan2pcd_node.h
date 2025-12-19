@@ -66,7 +66,9 @@ class Scan2PcdNode  : public rclcpp::Node
       target_frame = this->declare_parameter("target_frame", "target_frame");
       RCLCPP_INFO(this->get_logger(), "target_frame: %s", target_frame.c_str());
 
-      pub_pcd = this->create_publisher<sensor_msgs::msg::PointCloud2>("pcd", 1);
+      pub_pcd = this->create_publisher<sensor_msgs::msg::PointCloud2>("pcd",
+		      rclcpp::QoS(rclcpp::SensorDataQoS())
+		      );
 
       sub_scan = this->create_subscription<sensor_msgs::msg::LaserScan>(
 		      "scan",

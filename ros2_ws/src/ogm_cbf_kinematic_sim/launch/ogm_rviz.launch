@@ -8,7 +8,7 @@ from launch_ros.actions import Node
 def generate_launch_description():
 
     ns="ogm"
-    use_sim_time=True
+    use_sim_time=False
 
 
     rviz = Node(

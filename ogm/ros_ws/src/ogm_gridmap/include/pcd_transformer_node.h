@@ -195,7 +195,10 @@ class TransformerNode  : public rclcpp::Node
 
       T_link2sensor = get_T_matrix(link_frame, target_frame);
 
-      pub_pcd = this->create_publisher<sensor_msgs::msg::PointCloud2>("pcd_out", 1);
+      pub_pcd = this->create_publisher<sensor_msgs::msg::PointCloud2>(
+		      "pcd_out",
+                      rclcpp::QoS(rclcpp::SensorDataQoS())
+		      );
  
       sub_pcd = this->create_subscription<sensor_msgs::msg::PointCloud2>(
         "pcd_in",

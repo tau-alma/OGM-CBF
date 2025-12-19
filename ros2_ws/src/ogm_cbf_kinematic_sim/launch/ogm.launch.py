@@ -8,7 +8,7 @@ from launch_ros.actions import Node
 def generate_launch_description():
 
     ns="ogm"
-    use_sim_time=True
+    use_sim_time=False
 
     front_scan_2_front_pcd =  Node(
             package='ogm_gridmap',
@@ -73,10 +73,12 @@ def generate_launch_description():
                 ],
             parameters=[
                 {"use_sim_time" : use_sim_time},
+                {"do_pub_grid" : True},
+                {"do_pub_img" : True},
                 {"map_frame" : "map"},
                 {"cell_size" : 0.05},
                 {"height" : 20.},
-                {"width" : 20.},
+                {"width" : 25.},
                 {"s_target" : 0.95},
                 ],
         )

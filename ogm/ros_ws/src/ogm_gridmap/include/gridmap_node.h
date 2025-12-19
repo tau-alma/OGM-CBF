@@ -9,6 +9,7 @@
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 
+#include <chrono>   
 #include <opencv2/opencv.hpp>   
 #include <cv_bridge/cv_bridge.h>
 
@@ -27,6 +28,9 @@ class GridmapNode  : public rclcpp::Node
     float cell_size;
     uint32_t height;
     uint32_t width;
+
+    bool do_pub_grid;
+    bool do_pub_img;
 
     std::shared_ptr<Gridmap> gridmap;
 
@@ -57,26 +61,41 @@ class GridmapNode  : public rclcpp::Node
     void publish_image(rclcpp::Time& now)
     {
 
-      //CV_8S
-      //CV_8U
+      auto wall_start = std::chrono::high_resolution_clock::now();
       std::vector<uint8_t> data = gridmap->report_uint8();
+      auto wall_fetch = std::chrono::high_resolution_clock::now();
+      RCLCPP_DEBUG(this->get_logger(), "wall-img fetch: %lf ms",
+		      std::chrono::duration<double, std::milli>(wall_fetch - wall_start));
+      
+      
       cv::Mat img(
         gridmap->get_height(),
         gridmap->get_width(),
         CV_8U,
         data.data()
         );
-      //img.data = gridmap->report_int8();
+      auto wall_build = std::chrono::high_resolution_clock::now();
+      RCLCPP_DEBUG(this->get_logger(), "wall-img build: %lf ms",
+		      std::chrono::duration<double, std::milli>(wall_build - wall_fetch));
 
       cv_bridge::CvImage cv_bridge_image;
       cv_bridge_image.encoding = sensor_msgs::image_encodings::MONO8;
       cv_bridge_image.image = img;
+      auto wall_bridge = std::chrono::high_resolution_clock::now();
+      RCLCPP_DEBUG(this->get_logger(), "wall-img bridge: %lf ms",
+		      std::chrono::duration<double, std::milli>(wall_bridge - wall_build));
 
       sensor_msgs::msg::Image msg_img = *(cv_bridge_image.toImageMsg());
 	    msg_img.header.stamp = now;
 	    msg_img.header.frame_id = this->map_frame;
+      auto wall_msg = std::chrono::high_resolution_clock::now();
+      RCLCPP_DEBUG(this->get_logger(), "wall-img msg: %lf ms",
+		      std::chrono::duration<double, std::milli>(wall_msg - wall_bridge));
 
       pub_img->publish(msg_img);
+      auto wall_pub = std::chrono::high_resolution_clock::now();
+      RCLCPP_DEBUG(this->get_logger(), "wall-img pub: %lf ms",
+		      std::chrono::duration<double, std::milli>(wall_pub - wall_msg));
 
     }
 
@@ -84,18 +103,38 @@ class GridmapNode  : public rclcpp::Node
         const sensor_msgs::msg::PointCloud2::SharedPtr msg_pcd
         )
     {
+      auto wall_start = std::chrono::high_resolution_clock::now();
+      rclcpp::Time ts(msg_pcd->header.stamp);
+      rclcpp::Time now = this->now();
+      RCLCPP_DEBUG(this->get_logger(), "--------------------");
+      RCLCPP_DEBUG(this->get_logger(), "pcd callback, delay %lf ms", (now.seconds() - ts.seconds())*1e3);
 
       pcl::PCLPointCloud2 pcdp;
       pcl_conversions::toPCL(*msg_pcd, pcdp);
-      
       pcl::PointCloud<pcl::PointXYZI> pcd;
       pcl::fromPCLPointCloud2(pcdp, pcd);
+      
+      auto wall_conv = std::chrono::high_resolution_clock::now();
+      RCLCPP_DEBUG(this->get_logger(), "wall conversions: %lf ms",
+		      std::chrono::duration<double, std::milli>(wall_conv - wall_start));
+
 
       gridmap->update(pcd);
 
-      rclcpp::Time ts(msg_pcd->header.stamp);
-      publish_grid(ts);
-      publish_image(ts);
+      auto wall_update = std::chrono::high_resolution_clock::now();
+      RCLCPP_DEBUG(this->get_logger(), "wall update: %lf ms",
+		      std::chrono::duration<double, std::milli>(wall_update - wall_conv));
+
+      if (do_pub_grid) publish_grid(ts);
+      if (do_pub_img) publish_image(ts);
+
+      auto wall_pub = std::chrono::high_resolution_clock::now();
+      RCLCPP_DEBUG(this->get_logger(), "wall pub: %lf ms",
+		      std::chrono::duration<double, std::milli>(wall_pub - wall_update));
+
+      RCLCPP_DEBUG(this->get_logger(), "wall full callback: %lf ms",
+		      std::chrono::duration<double, std::milli>(wall_pub - wall_start));
+
     }
   
   public:
@@ -118,10 +157,22 @@ class GridmapNode  : public rclcpp::Node
       float s_target = this->declare_parameter("s_target", .95);
       RCLCPP_INFO(this->get_logger(), "s_target: %f", s_target);
 
+      do_pub_grid = this->declare_parameter("do_pub_grid", false);
+      RCLCPP_INFO(this->get_logger(), "do_pub_grid: %x", do_pub_grid);
+
+      do_pub_img = this->declare_parameter("do_pub_img", false);
+      RCLCPP_INFO(this->get_logger(), "do_pub_img: %x", do_pub_img);
+
       gridmap = std::make_shared<Gridmap>(Gridmap(height,width,cell_size, s_target));
 
-      pub_grid = this->create_publisher<nav_msgs::msg::OccupancyGrid>("gridmap", 1);
-      pub_img = this->create_publisher<sensor_msgs::msg::Image>("imgmap", 1);
+      pub_grid = this->create_publisher<nav_msgs::msg::OccupancyGrid>(
+		      "gridmap",
+		      rclcpp::QoS(rclcpp::SensorDataQoS())
+		      );
+      pub_img = this->create_publisher<sensor_msgs::msg::Image>(
+		      "imgmap",
+		      rclcpp::QoS(rclcpp::SensorDataQoS())
+		      );
 
       sub_pcd = this->create_subscription<sensor_msgs::msg::PointCloud2>(
 		      "pcd",
