@@ -17,7 +17,7 @@ from geometry_msgs.msg import TwistStamped, Twist
 from time import monotonic
 import os
 import csv
-from ogm_cbf_kinematic_sim.utils import world_to_pixel
+from utils import world_to_pixel
 from time import time
 import sys
 from ogm_cbf_kinematic_sim.conf import controller_frequency, simulator_frequency
@@ -135,11 +135,11 @@ class MobileRobot(Node):
         
         self.subscription_2 = self.create_subscription(Image, '/ogm/imgmap', self.listener_callback_map, qos_profile_sensor_data)
         self.publisher_image_ = self.create_publisher(Image, '/cbf_image', 1)
-        self.contour_timer_ = self.create_timer(0.1, self.publish_image)
+        self.contour_timer_ = self.create_timer(1, self.publish_image)
         self.bridge = CvBridge()
         self.publisher_cbf_ = self.create_publisher(Float64MultiArray, '/cbf_array', 1)
         self.publisher_plot_twist_ = self.create_publisher(TwistStamped, '/plot_vel', 1)
-        self.twist_publisher_ = self.create_publisher(Twist, 'cmd_vel_2', 1)
+        self.twist_publisher_ = self.create_publisher(Twist, 'cmd_vel', 1)
 
         vel_pub_time = 1.0 / controller_frequency
         self.twist_timer = self.create_timer(vel_pub_time, self.publish_velocity)
@@ -182,8 +182,8 @@ class MobileRobot(Node):
         # Global map and dimensions (will be updated on map reception)
         self.global_map = None
         self.map = None
-        self.map_height = 200#None
-        self.map_width = 200#None
+        self.map_height = 1#None
+        self.map_width = 1#None
         self.recieved_map = False
 
         # Controller hyperparameters
@@ -313,50 +313,50 @@ class MobileRobot(Node):
 
     def publish_image(self):
         """Publish the constructed image on ROS."""
-        # try:
-        #     self.process_image()
-        #     if self.h_img is not None:
-        #         img_msg = self.bridge.cv2_to_imgmsg(self.h_img)
-        #         # Use the map's timestamp if available
-        #         img_msg.header.stamp = self.time_map.to_msg() if isinstance(self.time_map, Time) else self.get_clock().now().to_msg()
-        #         self.publisher_image_.publish(img_msg)
-        # except Exception as e:
-        #     self.get_logger().error(f"Error in publish_image: {e}")
-
         try:
-            #normalize sdf for visualization
-            #print("-------------we are visualizing sdf-----------------")
-            vis = self.global_map
-
-            # Convert only if it's grayscale
-            if vis.ndim == 2:
-                vis = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
-            elif vis.ndim == 3 and vis.shape[2] == 3:
-                vis = vis.copy()
-            else:
-                self.get_logger().error(f"Unexpected global_map shape: {vis.shape}")
-                return
-
-
-            cv2.circle(vis, (int(self.x), int(self.y)), 5, (0, 0, 255), 2)
-            
-
-            #print x y in image
-            #print(f"Robot pixel position: x={int(self.x)}, y={int(self.y)}")
-            self.get_logger().info(f"Robot pixel position: x={int(self.x)}, y={int(self.y)}")
-            
-
-            # IMPORTANT: set encoding explicitly
-            img_msg = self.bridge.cv2_to_imgmsg(vis, encoding='bgr8')
-            img_msg.header.stamp = (
-                self.time_map.to_msg()
-                if isinstance(self.time_map, Time)
-                else self.get_clock().now().to_msg()
-            )
-            self.publisher_image_.publish(img_msg)
-
+            self.process_image()
+            if self.h_img is not None:
+                img_msg = self.bridge.cv2_to_imgmsg(self.h_img)
+                # Use the map's timestamp if available
+                img_msg.header.stamp = self.time_map.to_msg() if isinstance(self.time_map, Time) else self.get_clock().now().to_msg()
+                self.publisher_image_.publish(img_msg)
         except Exception as e:
             self.get_logger().error(f"Error in publish_image: {e}")
+
+        # try:
+        #     #normalize sdf for visualization
+        #     #print("-------------we are visualizing sdf-----------------")
+        #     vis = self.global_map
+
+        #     # Convert only if it's grayscale
+        #     if vis.ndim == 2:
+        #         vis = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
+        #     elif vis.ndim == 3 and vis.shape[2] == 3:
+        #         vis = vis.copy()
+        #     else:
+        #         self.get_logger().error(f"Unexpected global_map shape: {vis.shape}")
+        #         return
+
+
+        #     cv2.circle(vis, (int(self.x), int(self.y)), 5, (0, 0, 255), 2)
+            
+
+        #     #print x y in image
+        #     #print(f"Robot pixel position: x={int(self.x)}, y={int(self.y)}")
+        #     self.get_logger().info(f"Robot pixel position: x={int(self.x)}, y={int(self.y)}")
+            
+
+        #     # IMPORTANT: set encoding explicitly
+        #     img_msg = self.bridge.cv2_to_imgmsg(vis, encoding='bgr8')
+        #     img_msg.header.stamp = (
+        #         self.time_map.to_msg()
+        #         if isinstance(self.time_map, Time)
+        #         else self.get_clock().now().to_msg()
+        #     )
+        #     self.publisher_image_.publish(img_msg)
+
+        # except Exception as e:
+        #     self.get_logger().error(f"Error in publish_image: {e}")
 
         
 
@@ -374,6 +374,11 @@ class MobileRobot(Node):
         _, map_img = cv2.threshold(map_img, 127, 255, cv2.THRESH_BINARY)
         map_img = np.asarray(map_img)
         map_img = 255 - map_img  # Invert colors: obstacles=255, free=0
+
+        k = 3
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2*k + 1, 2*k + 1))
+        map_img = cv2.erode(map_img, kernel, iterations=1)
+
         #map_img = np.ones_like(map_img)*255
         self.map_height, self.map_width = map_img.shape
         #self.recieved_map = True
@@ -479,6 +484,9 @@ class MobileRobot(Node):
         # Convert real-world pose to pixel coordinates using the map dimensions
         if self.sdf is not None:
             self.x, self.y = world_to_pixel(self.x_real, self.y_real, img_height=self.map_height)
+            #self.x = 10
+            #self.y = 20
+            print(f"---------------my odom: x={self.x_real}, y={self.y_real}, yaw = {np.rad2deg(self.yaw)}-------------------")
             #t_1 = time()
             self.controller()
             #t_2 = time()
