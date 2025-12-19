@@ -146,6 +146,9 @@ class OffsetOdomNode  : public rclcpp::Node
       from_params = this->declare_parameter("from_params", false);
       RCLCPP_INFO(this->get_logger(), "from_params: %x", from_params);
 
+      offset_to_link = this->declare_parameter("offset_to_link", false);
+      RCLCPP_INFO(this->get_logger(), "offset_to_link: %x", offset_to_link);
+
       if (from_params)
       {
         float fixed_offset_x = this->declare_parameter("fixed_offset_x", 0.);

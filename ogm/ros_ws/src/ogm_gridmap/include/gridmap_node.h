@@ -58,11 +58,12 @@ class GridmapNode  : public rclcpp::Node
     {
 
       //CV_8S
-      std::vector<int8_t> data = gridmap->report_int8();
+      //CV_8U
+      std::vector<uint8_t> data = gridmap->report_uint8();
       cv::Mat img(
         gridmap->get_height(),
         gridmap->get_width(),
-        CV_8S,
+        CV_8U,
         data.data()
         );
       //img.data = gridmap->report_int8();

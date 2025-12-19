@@ -209,6 +209,20 @@ class Gridmap
       return ret;
     }
    
+    std::vector<uint8_t> report_uint8()
+    {
+      std::vector<uint8_t> ret;
+      for (int i = 0; i < h; ++i)
+      {
+        for (int j = 0; j < w; ++j)
+        {
+          uint8_t val = std::floor(map(i,j)*255);
+          ret.push_back(val);
+        }
+      }
+
+      return ret;
+    }
 };
 
 #endif
