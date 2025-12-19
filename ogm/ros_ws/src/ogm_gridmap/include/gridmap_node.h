@@ -68,12 +68,15 @@ class GridmapNode  : public rclcpp::Node
 		      std::chrono::duration<double, std::milli>(wall_fetch - wall_start));
       
       
-      cv::Mat img(
+      cv::Mat map(
         gridmap->get_height(),
         gridmap->get_width(),
         CV_8U,
         data.data()
         );
+      cv::Mat img;
+      cv::flip(map, img, 0);
+
       auto wall_build = std::chrono::high_resolution_clock::now();
       RCLCPP_DEBUG(this->get_logger(), "wall-img build: %lf ms",
 		      std::chrono::duration<double, std::milli>(wall_build - wall_fetch));
