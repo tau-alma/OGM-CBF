@@ -278,7 +278,7 @@ class MobileRobot(Node):
         edges_y = self.dsdf_y
         im_height, im_width = self.sdf.shape  # use dynamic dimensions
         self.ax.clear()
-        dstep = max(1, im_width // 20)  # adjust the step size based on map width
+        dstep = max(1, im_width // 40)  # adjust the step size based on map width
         Y, X = np.mgrid[0:im_height:dstep, 0:im_width:dstep]
         self.ax.quiver(
             X, Y,
@@ -344,12 +344,12 @@ class MobileRobot(Node):
             map_not = np.uint8(map_not)
             phi_safe = cv2.distanceTransform(map_img, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1)
             phi_safe = phi_safe - 1.0
-            phi_s_safe = sdf_a * np.tanh( 0.005*phi_safe )
+            phi_s_safe = sdf_a * np.tanh( 0.003*phi_safe )
             #phi_s_safe = phi_safe
             
             phi_unsafe = cv2.distanceTransform(map_not, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1)
             #phi_unsafe = np.where(phi_unsafe != 1.0, phi_unsafe, 0.0)
-            phi_s_unsafe = -sdf_a * np.tanh( 0.005*phi_unsafe)
+            phi_s_unsafe = -sdf_a * np.tanh( 0.003*phi_unsafe)
             #phi_s_unsafe = -phi_unsafe
 
             phi_s = phi_s_unsafe + phi_s_safe
@@ -461,7 +461,7 @@ class MobileRobot(Node):
         """
         global vel_prev, dPsi_prev
         # Hyperparameters and reference values
-        C_alpha = 0.9#5#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
+        C_alpha = 0.1#5#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
         P_alpha = 1.0
         Kv = 1.0
         Kw = 0.01
@@ -508,7 +508,7 @@ class MobileRobot(Node):
 
 
         yaw = self.yaw
-        l_a = 0.1
+        l_a = 0.1#0.025#0.1
         beta = 0.25#0.005
         l_s = -l_a#* (2*np.pi*beta + 1)
         epsilon = 0.000001
