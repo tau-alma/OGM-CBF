@@ -11,7 +11,9 @@ class MapPublisherNode(Node):
         self.publisher_ = self.create_publisher(Image, 'map_image', 1)
         self.timer = self.create_timer(0.01, self.publish_map)
         self.bridge = CvBridge()
-        self.map_path = os.path.join(os.path.dirname(__file__), 'k2-obs1.png')
+        #self.map_path = os.path.join(os.path.dirname(__file__), '/home/golnaz/workspace/projects/work/OGM-CBF/ros2_ws/src/ogm_cbf_kinematic_sim/ogm_cbf_kinematic_sim/map/k2-obs1.png')
+        self.map_path = os.path.join(os.path.dirname(__file__), '/home/golnaz/ogm_imgmap_png/frame_000881_1766238885_707412032.png')
+        
         #self.map_path = os.path.join(os.path.dirname(__file__), 'hard.png')
         #self.map_path = os.path.join(os.path.dirname(__file__), 'blank_map.png')
     

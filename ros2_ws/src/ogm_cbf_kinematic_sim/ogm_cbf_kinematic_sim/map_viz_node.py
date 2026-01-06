@@ -8,7 +8,7 @@ import matplotlib
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 import numpy as np
-from ogm_cbf_kinematic_sim.utils import world_to_pixel
+from .utils import world_to_pixel
 
 
 matplotlib.use('Agg')  # Non-interactive backend for ROS
@@ -20,7 +20,7 @@ class MapVizNode(Node):
 
         # Subscribers
         self.map_subscriber = self.create_subscription(Image, 'map_image', self.map_callback, 1, callback_group = self.callback_group_async)
-        self.odom_subscriber = self.create_subscription(Odometry, 'odom', self.odom_callback, 1,  callback_group = self.callback_group_async)
+        self.odom_subscriber = self.create_subscription(Odometry, 'odom_2', self.odom_callback, 1,  callback_group = self.callback_group_async)
         self.publisher_image_ = self.create_publisher(Image, '/map_traj_image', 1,  callback_group = self.callback_group_async)
 
         # Timer for publishing trajectory map

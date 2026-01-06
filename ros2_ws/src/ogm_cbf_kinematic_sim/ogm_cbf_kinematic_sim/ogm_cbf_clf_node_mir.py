@@ -127,14 +127,14 @@ def normalize_difference(angle):
 class MobileRobot(Node):
     def __init__(self, state=[0,0,0], timestep=0.1):
         super().__init__('minimal_publisher')
-        self.vehicle_info = self.create_subscription(Odometry, "odom", self.vehicle_odom_callback, 1)
+        self.vehicle_info = self.create_subscription(Odometry, "odom_2", self.vehicle_odom_callback, 1)
         self.subscription_2 = self.create_subscription(Image, 'map_image', self.listener_callback_map, 1)
         self.publisher_image_ = self.create_publisher(Image, '/cbf_image', 1)
         self.contour_timer_ = self.create_timer(1.0, self.publish_image)
         self.bridge = CvBridge()
         self.publisher_cbf_ = self.create_publisher(Float64MultiArray, '/cbf_array', 1)
         self.publisher_plot_twist_ = self.create_publisher(TwistStamped, '/plot_vel', 1)
-        self.twist_publisher_ = self.create_publisher(Twist, 'cmd_vel', 1)
+        self.twist_publisher_ = self.create_publisher(Twist, 'cmd_vel_2', 1)
 
         vel_pub_time = 1.0 / controller_frequency
         self.twist_timer = self.create_timer(vel_pub_time, self.publish_velocity)
@@ -159,7 +159,6 @@ class MobileRobot(Node):
         self.grad_sdf = None
         self.grad_sdf_normalized = None
         self.ddsdf_xx = self.ddsdf_yy = self.ddsdf_xy = self.ddsdf_yx = 0.0
-        self.ddsdf_xx_normalized = self.ddsdf_yy_normalized = self.ddsdf_xy_normalized = self.ddsdf_yx_normalized = 0.0
 
         self.fig, self.ax = plt.subplots(1, 1)
         self.Vx = self.Vy = self.Vz = 0.0
@@ -235,7 +234,7 @@ class MobileRobot(Node):
         gy = bilinear(self.dsdf_y_world, px, py)
         return gx, gy
     
-    def hessian_at_world(self, x_world, y_world, normalized=False):
+    def hessian_at_world(self, x_world, y_world):
         """
         Returns continuous Hessian entries (dxx, dxy, dyx, dyy)
         at world coordinates (x_world, y_world).
@@ -256,12 +255,6 @@ class MobileRobot(Node):
         dxy = interpolate(self.ddsdf_xy, px, py)
         dyx = interpolate(self.ddsdf_yx, px, py)
         dyy = interpolate(self.ddsdf_yy, px, py)
-
-        if normalized:
-            dxx = interpolate(self.ddsdf_xx_normalized, px, py)
-            dxy = interpolate(self.ddsdf_xy_normalized, px, py)
-            dyx = interpolate(self.ddsdf_yx_normalized, px, py)
-            dyy = interpolate(self.ddsdf_yy_normalized, px, py)
 
         return dxx, dxy, dyx, dyy
 
@@ -291,7 +284,10 @@ class MobileRobot(Node):
             X, Y,
             edges_x[0:im_height:dstep, 0:im_width:dstep],
             edges_y[0:im_height:dstep, 0:im_width:dstep],
-            color='r'
+            color='r',
+            # angles="xy",
+            # scale_units="xy",
+            # scale=1
         )
         t = self.ax.imshow(final, cmap='viridis', vmin=np.min(final), vmax=np.max(final))
         circle = plt.Circle((self.x, self.y), 5, fill=False, color='blue')
@@ -328,6 +324,12 @@ class MobileRobot(Node):
             # Binarize the map image
             _, map_img = cv2.threshold(map_img, 127, 255, cv2.THRESH_BINARY)
             map_img = np.asarray(map_img)
+            map_img = cv2.bitwise_not(map_img)  # Invert colors: obstacles=255, free=0
+
+            k = 3
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2*k + 1, 2*k + 1))
+            map_img = cv2.erode(map_img, kernel, iterations=1)
+
             self.map_height, self.map_width = map_img.shape
             self.recieved_map = True
 
@@ -343,10 +345,13 @@ class MobileRobot(Node):
             phi_safe = cv2.distanceTransform(map_img, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1)
             phi_safe = phi_safe - 1.0
             phi_s_safe = sdf_a * np.tanh( 0.005*phi_safe )
+            #phi_s_safe = phi_safe
             
             phi_unsafe = cv2.distanceTransform(map_not, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1)
             #phi_unsafe = np.where(phi_unsafe != 1.0, phi_unsafe, 0.0)
             phi_s_unsafe = -sdf_a * np.tanh( 0.005*phi_unsafe)
+            #phi_s_unsafe = -phi_unsafe
+
             phi_s = phi_s_unsafe + phi_s_safe
             self.sdf = phi_s.astype(np.float32)
 
@@ -379,17 +384,6 @@ class MobileRobot(Node):
             norm_grad[norm_grad == 0] = 1.0  # avoid division by zero
             self.dsdf_x_normalized = self.dsdf_x / norm_grad
             self.dsdf_y_normalized = self.dsdf_y / norm_grad
-
-            gyy_norm, gyx_norm = np.gradient(-self.dsdf_y_normalized)
-            gxy_norm, gxx_norm = np.gradient(self.dsdf_x_normalized)
-
-            self.ddsdf_xx_normalized = gxx_norm / (res ** 2)         # ∂²(∂φ/∂x_normalized) / ∂x²
-            self.ddsdf_yy_normalized = gyy_norm / (res ** 2)         # ∂²(∂φ/∂y_normalized) / ∂y²
-            self.ddsdf_xy_normalized = -gxy_norm / (res ** 2)        # ∂²(∂φ/∂x_normalized) / ∂x∂y
-            self.ddsdf_yx_normalized = -gyx_norm / (res ** 2)        # ∂²(∂φ/∂y_normalized) / ∂y∂x
-
-            
-
             self.grad_sdf = np.array([self.dsdf_x, self.dsdf_y])
             self.grad_sdf_normalized = np.array([self.dsdf_x_normalized, self.dsdf_y_normalized])
             # Second derivatives will be computed at the robot's location later.
@@ -467,21 +461,21 @@ class MobileRobot(Node):
         """
         global vel_prev, dPsi_prev
         # Hyperparameters and reference values
-        C_alpha = 0.1#5#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
+        C_alpha = 0.9#5#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
         P_alpha = 1.0
         Kv = 1.0
         Kw = 0.01
         Kd = 1.0
         C_gamma = 1.0
         P_gamma = 1.0
-        Vmax =1.0 #self.get_parameter('Vmax').value #1.0
-        Vmin = -1.0#self.get_parameter('Vmin').value #-1.0
-        Wmax = 4 * np.pi#self.get_parameter('Wmax').value #4 * np.pi
-        Wmin = -4 * np.pi#self.get_parameter('Wmin').value #-4 * np.pi
+        Vmax =0.5 #self.get_parameter('Vmax').value #1.0
+        Vmin = -0.5#self.get_parameter('Vmin').value #-1.0
+        Wmax = 0.5 * np.pi#self.get_parameter('Wmax').value #4 * np.pi
+        Wmin = -0.5* np.pi#self.get_parameter('Wmin').value #-4 * np.pi
         Delta_ub = 1.0#0.5#self.get_parameter('Delta_ub').value #0.5
         Delta_lb = -1.0#-0.5#self.get_parameter('Delta_lb').value #-0.5
         #heading = normalize_angle(np.pi - np.pi/6)
-        heading = normalize_angle(np.pi)
+        heading = normalize_angle(1/4*np.pi)
 
         # # Use the dynamic map indices (make sure x and y are integers)
         # sdf = self.sdf[int(self.y), int(self.x)]
@@ -511,26 +505,12 @@ class MobileRobot(Node):
             dsdf_x_normalized = dsdf_x_true / grad_norm
             dsdf_y_normalized = dsdf_y_true / grad_norm
 
-        
-        ddsdf_xx_normalized, ddsdf_xy_normalized, ddsdf_yx_normalized, ddsdf_yy_normalized = self.hessian_at_world(xw, yw, normalized=True)
-        # gyy_norm, gyx_norm = np.gradient(dsdf_y_normalized)
-        # gxy_norm, gxx_norm = np.gradient(dsdf_x_normalized)
-
-        # res = self.map_resolution
-
-        # ddsdf_xx_normalized = gxx_norm / (res ** 2)         # ∂²(∂φ/∂x_normalized) / ∂x²
-        # ddsdf_yy_normalized = gyy_norm / (res ** 2)         # ∂²(∂φ/∂y_normalized) / ∂y²
-        # ddsdf_xy_normalized = -gxy_norm / (res ** 2)        # ∂²(∂φ/∂x_normalized) / ∂x∂y
-        # ddsdf_yx_normalized = -gyx_norm / (res ** 2)        # ∂²(∂φ/∂y_normalized) / ∂y∂x
-        
-
-
 
 
         yaw = self.yaw
-        l_a = 0.25
-        beta = 0.05
-        l_s = -l_a* (2*np.pi*beta + 1)
+        l_a = 0.1
+        beta = 0.25#0.005
+        l_s = -l_a#* (2*np.pi*beta + 1)
         epsilon = 0.000001
 
         if math.isnan(dsdf_x_normalized) or math.isnan(dsdf_y_normalized):
@@ -542,21 +522,17 @@ class MobileRobot(Node):
 
         x_vector = np.array([np.cos(yaw), np.sin(yaw)])
         sdf_normalized_grad_vector = np.array([dsdf_x_normalized, dsdf_y_normalized])
-    
-
-
-        cosine_eta = np.dot(x_vector, sdf_normalized_grad_vector)
-        sine_eta = np.cross(x_vector, sdf_normalized_grad_vector)
+        cosine_eta = np.dot(sdf_normalized_grad_vector, x_vector)
+        sine_eta = np.cross(sdf_normalized_grad_vector, x_vector)
         eta = np.arctan2(sine_eta, cosine_eta)
         eta = normalize_angle(eta)
-        # eta is sth minus yaw
         
         if math.isnan(eta):
             self.get_logger().warn("eta is NaN!")
             eta = 0.0
 
         #cbf = sdf + l_s + l_a * (np.cos(eta) ** P_alpha)
-        cbf = sdf + l_s + l_a * (np.cos(eta)+ beta*np.sin(eta))
+        cbf = sdf + l_s + l_a * (np.cos(eta)+ beta*eta)
 
         #time_now = time()
         #delta_time = time_now - self.time_cbf_prev if self.time_cbf_prev != 0.0 else 1e-5
@@ -588,10 +564,8 @@ class MobileRobot(Node):
             np.dot(np.array([ddsdf_xx, ddsdf_yx]), x_vector) +
             np.dot(sdf_normalized_grad_vector, dx_vector_x) +
 
-            #(np.dot(np.array([ddsdf_xx, ddsdf_yx]), x_vector) +
-            #np.dot(sdf_normalized_grad_vector, dx_vector_x))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
-            beta*((-np.sin(yaw)* dyaw_x)*dsdf_y_normalized + np.cos(yaw)*ddsdf_yx_normalized) - (np.cos(yaw)* dyaw_x* dsdf_x_normalized + np.sin(yaw)* ddsdf_xx_normalized)
-
+            beta*((np.dot(np.array([ddsdf_xx, ddsdf_yx]), x_vector) +
+            np.dot(sdf_normalized_grad_vector, dx_vector_x))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon)))
         ) 
         dcbf_y = dsdf_y_true 
         
@@ -599,11 +573,10 @@ class MobileRobot(Node):
             np.dot(np.array([ddsdf_xy, ddsdf_yy]), x_vector) +
             np.dot(sdf_normalized_grad_vector, dx_vector_y) +
 
-            #( np.dot(np.array([ddsdf_xy, ddsdf_yy]), x_vector) +
-            #np.dot(sdf_normalized_grad_vector, dx_vector_y))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
-            beta*((-np.sin(yaw)* dyaw_y)*dsdf_y_normalized + np.cos(yaw)*ddsdf_yy_normalized) - (np.cos(yaw)* dyaw_y* dsdf_x_normalized + np.sin(yaw)* ddsdf_xy_normalized)
+            beta*(( np.dot(np.array([ddsdf_xy, ddsdf_yy]), x_vector) +
+            np.dot(sdf_normalized_grad_vector, dx_vector_y))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon)))
         )
-        dcbf_yaw = -l_a * (-np.sin(eta) + beta*(np.cos(eta)))
+        dcbf_yaw = l_a * (-np.sin(eta) + beta)
 
         
 
@@ -660,10 +633,19 @@ class MobileRobot(Node):
             [0, 0, 0]
         ])
         h_vec = np.array([Vmax, -Vmin, Wmax, -Wmin, Delta_ub, -Delta_lb, 0, 0])
+
+        #cbf_margin = 0.05
+        #cbf_eff = cbf - cbf_margin
+        #h_push = 0.4      # where the extra push starts
+        #h0_max = 0.05      # max margin
+
+        #h0 = h0_max * np.clip((h_push - cbf) / max(h_push, 1e-6), 0.0, 1.0)
+        cbf_eff = cbf #- h0
+
         G[6][0] = -((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))
         G[6][1] = -dcbf_yaw
         G[6][2] = 0
-        h_vec[6] = C_alpha * cbf
+        h_vec[6] = C_alpha * cbf_eff
 
         G[7][0] = 0
         G[7][1] = normalize_difference(yaw - heading)
