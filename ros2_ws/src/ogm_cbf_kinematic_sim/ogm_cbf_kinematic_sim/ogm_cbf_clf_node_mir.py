@@ -344,12 +344,12 @@ class MobileRobot(Node):
             map_not = np.uint8(map_not)
             phi_safe = cv2.distanceTransform(map_img, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1)
             phi_safe = phi_safe - 1.0
-            phi_s_safe = sdf_a * np.tanh( 0.003*phi_safe )
+            phi_s_safe = sdf_a * np.tanh( 0.005*phi_safe )
             #phi_s_safe = phi_safe
             
             phi_unsafe = cv2.distanceTransform(map_not, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1)
             #phi_unsafe = np.where(phi_unsafe != 1.0, phi_unsafe, 0.0)
-            phi_s_unsafe = -sdf_a * np.tanh( 0.003*phi_unsafe)
+            phi_s_unsafe = -sdf_a * np.tanh( 0.005*phi_unsafe)
             #phi_s_unsafe = -phi_unsafe
 
             phi_s = phi_s_unsafe + phi_s_safe
