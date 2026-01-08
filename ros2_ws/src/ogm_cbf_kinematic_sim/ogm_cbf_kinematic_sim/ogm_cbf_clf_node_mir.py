@@ -234,7 +234,7 @@ class MobileRobot(Node):
         gy = bilinear(self.dsdf_y_world, px, py)
         return gx, gy
     
-    def hessian_at_world(self, x_world, y_world):
+    def hessian_at_world(self, x_world, y_world, normalized=False):
         """
         Returns continuous Hessian entries (dxx, dxy, dyx, dyy)
         at world coordinates (x_world, y_world).
@@ -255,6 +255,12 @@ class MobileRobot(Node):
         dxy = interpolate(self.ddsdf_xy, px, py)
         dyx = interpolate(self.ddsdf_yx, px, py)
         dyy = interpolate(self.ddsdf_yy, px, py)
+        if normalized:
+            dxx = interpolate(self.ddsdf_xx_normalized, px, py)
+            dxy = interpolate(self.ddsdf_xy_normalized, px, py)
+            dyx = interpolate(self.ddsdf_yx_normalized, px, py)
+            dyy = interpolate(self.ddsdf_yy_normalized, px, py)
+
 
         return dxx, dxy, dyx, dyy
 
@@ -344,13 +350,13 @@ class MobileRobot(Node):
             map_not = np.uint8(map_not)
             phi_safe = cv2.distanceTransform(map_img, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1)
             phi_safe = phi_safe - 1.0
-            phi_s_safe = sdf_a * np.tanh( 0.005*phi_safe )
-            #phi_s_safe = phi_safe
+            #phi_s_safe = sdf_a * np.tanh( 0.001*phi_safe )
+            phi_s_safe = phi_safe
             
             phi_unsafe = cv2.distanceTransform(map_not, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1)
             #phi_unsafe = np.where(phi_unsafe != 1.0, phi_unsafe, 0.0)
-            phi_s_unsafe = -sdf_a * np.tanh( 0.005*phi_unsafe)
-            #phi_s_unsafe = -phi_unsafe
+            #phi_s_unsafe = -sdf_a * np.tanh( 0.001*phi_unsafe)
+            phi_s_unsafe = -phi_unsafe
 
             phi_s = phi_s_unsafe + phi_s_safe
             self.sdf = phi_s.astype(np.float32)
@@ -387,6 +393,16 @@ class MobileRobot(Node):
             self.grad_sdf = np.array([self.dsdf_x, self.dsdf_y])
             self.grad_sdf_normalized = np.array([self.dsdf_x_normalized, self.dsdf_y_normalized])
             # Second derivatives will be computed at the robot's location later.
+
+            gyy_norm, gyx_norm = np.gradient(-self.dsdf_y_normalized)
+            gxy_norm, gxx_norm = np.gradient(self.dsdf_x_normalized)
+
+            self.ddsdf_xx_normalized = gxx_norm / (res ** 2)         # ∂²(∂φ/∂x_normalized) / ∂x²
+            self.ddsdf_yy_normalized = gyy_norm / (res ** 2)         # ∂²(∂φ/∂y_normalized) / ∂y²
+            self.ddsdf_xy_normalized = -gxy_norm / (res ** 2)        # ∂²(∂φ/∂x_normalized) / ∂x∂y
+            self.ddsdf_yx_normalized = -gyx_norm / (res ** 2)        # ∂²(∂φ/∂y_normalized) / ∂y∂x
+
+
 
     def vehicle_odom_callback(self, msg):
         """
@@ -477,14 +493,6 @@ class MobileRobot(Node):
         #heading = normalize_angle(np.pi - np.pi/6)
         heading = normalize_angle(1/4*np.pi)
 
-        # # Use the dynamic map indices (make sure x and y are integers)
-        # sdf = self.sdf[int(self.y), int(self.x)]
-        # #sdf = interpolate(self.sdf, self.x, self.y)
-        # dsdf_x_true = self.dsdf_x[int(self.y), int(self.x)]
-        # dsdf_y_true = self.dsdf_y[int(self.y), int(self.x)]
-        # dsdf_x_normalized = self.dsdf_x_normalized[int(self.y), int(self.x)]
-        # dsdf_y_normalized = self.dsdf_y_normalized[int(self.y), int(self.x)]
-
         xw = self.x_real
         yw = self.y_real
         yaw = self.yaw
@@ -496,124 +504,42 @@ class MobileRobot(Node):
 
        
 
-        # Normalized gradient (world)
-        grad_norm = math.hypot(dsdf_x_true, dsdf_y_true)
-        if grad_norm < 1e-6:
-            dsdf_x_normalized = 0.0
-            dsdf_y_normalized = 0.0
-        else:
-            dsdf_x_normalized = dsdf_x_true / grad_norm
-            dsdf_y_normalized = dsdf_y_true / grad_norm
-
-
 
         yaw = self.yaw
-        l_a = 0.1#0.025#0.1
-        beta = 0.25#0.005
-        l_s = -l_a#* (2*np.pi*beta + 1)
-        epsilon = 0.000001
-
-        if math.isnan(dsdf_x_normalized) or math.isnan(dsdf_y_normalized):
-            self.get_logger().error("NaN in normalized gradient!")
-            dsdf_x_normalized = dsdf_y_normalized = 0.0
-        if any(math.isnan(val) for val in [ddsdf_xx, ddsdf_xy, ddsdf_yx, ddsdf_yy]):
-            self.get_logger().error("NaN in second derivative!")
-            ddsdf_xx = ddsdf_xy =ddsdf_yx = ddsdf_yy = 0.0
-
-        x_vector = np.array([np.cos(yaw), np.sin(yaw)])
-        sdf_normalized_grad_vector = np.array([dsdf_x_normalized, dsdf_y_normalized])
-        cosine_eta = np.dot(sdf_normalized_grad_vector, x_vector)
-        sine_eta = np.cross(sdf_normalized_grad_vector, x_vector)
-        eta = np.arctan2(sine_eta, cosine_eta)
-        eta = normalize_angle(eta)
+        l_a = 0.25#0.025#0.1
+        l_b = 0.1
+        l_s = -np.sqrt(l_a**2 + l_b**2) #-l_a -(l_a*beta)# * (2*np.pi*beta + 1)
+        
+        
         
         if math.isnan(eta):
             self.get_logger().warn("eta is NaN!")
             eta = 0.0
 
-        #cbf = sdf + l_s + l_a * (np.cos(eta) ** P_alpha)
-        cbf = sdf + l_s + l_a * (np.cos(eta)+ beta*eta)
+        
+        g = np.array([dsdf_x_true, dsdf_y_true])   # raw, world
+        x = np.array([np.cos(yaw), np.sin(yaw)])
+        x_perp = np.array([-np.sin(yaw), np.cos(yaw)])
 
-        #time_now = time()
-        #delta_time = time_now - self.time_cbf_prev if self.time_cbf_prev != 0.0 else 1e-5
-        #self.time_cbf_prev = time_now
-        delta_time = 1/controller_frequency#1/100
+        cbf = sdf + l_s + l_a*(g @ x) + l_b*(g @ x_perp)
+
+        # Hessian columns (world)
+        g_x = np.array([ddsdf_xx, ddsdf_yx])   # ∂g/∂x
+        g_y = np.array([ddsdf_xy, ddsdf_yy])   # ∂g/∂y
+
+        dcbf_x = dsdf_x_true + l_a*(g_x @ x) + l_b*(g_x @ x_perp)
+        dcbf_y = dsdf_y_true + l_a*(g_y @ x) + l_b*(g_y @ x_perp)
+        dcbf_yaw = l_a*(g @ x_perp) - l_b*(g @ x)
+
+        delta_time = 1/controller_frequency
         true_cbf_dot = (cbf - self.cbf_prev)/ delta_time
 
-        try:
-            dyaw_x = self.angular_velocity / self.linear_velocity * np.cos(yaw)
-            dyaw_y = self.angular_velocity / self.linear_velocity * np.sin(yaw)
-        except Exception as e:
-            self.get_logger().warn("Division by zero in dyaw computation")
-            dyaw_x = dyaw_y = 0.0
 
-        dx_vector_x = np.array([-np.sin(yaw), np.cos(yaw)]) * dyaw_x
-        dx_vector_y = np.array([-np.sin(yaw), np.cos(yaw)]) * dyaw_y
-
-        # dcbf_x = dsdf_x_true + P_alpha * l_a * (
-        #     np.dot(np.array([self.ddsdf_xx, self.ddsdf_yx]), x_vector) +
-        #     np.dot(sdf_normalized_grad_vector, dx_vector_x)
-        # ) * np.cos(eta) ** (P_alpha - 1)
-        # dcbf_y = dsdf_y_true + P_alpha * l_a * (
-        #     np.dot(np.array([self.ddsdf_xy, self.ddsdf_yy]), x_vector) +
-        #     np.dot(sdf_normalized_grad_vector, dx_vector_y)
-        # ) * np.cos(eta) ** (P_alpha - 1)
-        #dcbf_yaw = P_alpha * l_a * (-np.sin(eta)) * np.cos(eta) ** (P_alpha - 1)
-        dcbf_x = dsdf_x_true 
-        + l_a * (
-            np.dot(np.array([ddsdf_xx, ddsdf_yx]), x_vector) +
-            np.dot(sdf_normalized_grad_vector, dx_vector_x) +
-
-            beta*((np.dot(np.array([ddsdf_xx, ddsdf_yx]), x_vector) +
-            np.dot(sdf_normalized_grad_vector, dx_vector_x))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon)))
-        ) 
-        dcbf_y = dsdf_y_true 
-        
-        + l_a * (
-            np.dot(np.array([ddsdf_xy, ddsdf_yy]), x_vector) +
-            np.dot(sdf_normalized_grad_vector, dx_vector_y) +
-
-            beta*(( np.dot(np.array([ddsdf_xy, ddsdf_yy]), x_vector) +
-            np.dot(sdf_normalized_grad_vector, dx_vector_y))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon)))
-        )
-        dcbf_yaw = l_a * (-np.sin(eta) + beta)
-
-        
 
         print(f"eta: {np.rad2deg(eta)}")
 
         print(f"dcbf_x: {dcbf_x}, dcbf_y: {dcbf_y}, dcbf_yaw: {dcbf_yaw}")
-        # print(f"""dcbf_x_cos{l_a * (
-        #     np.dot(np.array([self.ddsdf_xx, self.ddsdf_yx]), x_vector) +
-        #     np.dot(sdf_normalized_grad_vector, dx_vector_x) +
-
-        #     (np.dot(np.array([self.ddsdf_xx, self.ddsdf_yx]), x_vector) +
-        #     np.dot(sdf_normalized_grad_vector, dx_vector_x))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
-
-        # ) 
-        # }""")
-
-        # print(f"""dcbf_x_cos_arccos: {
-        #       l_a* (np.dot(np.array([self.ddsdf_xx, self.ddsdf_yx]), x_vector) +
-        #     np.dot(sdf_normalized_grad_vector, dx_vector_x))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
-        # }""")
-
-
-        # print(f"""dcbf_y_cos{
-        #     l_a * (
-        #     np.dot(np.array([self.ddsdf_xy, self.ddsdf_yy]), x_vector) +
-        #     np.dot(sdf_normalized_grad_vector, dx_vector_y) +
-
-        #     ( np.dot(np.array([self.ddsdf_xy, self.ddsdf_yy]), x_vector) +
-        #     np.dot(sdf_normalized_grad_vector, dx_vector_y))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
-
-        # )
-        #     }""")
-        
-        # print(f"""dcbf_y_cos_arccos: {
-        #       l_a*  ( np.dot(np.array([self.ddsdf_xy, self.ddsdf_yy]), x_vector) +
-        #     np.dot(sdf_normalized_grad_vector, dx_vector_y))* (1/np.sqrt(1 - np.cos(eta)**2 + epsilon))
-        # }""")
+       
 
         Vref = Vmax
         K_Wref = 0.5
@@ -634,18 +560,10 @@ class MobileRobot(Node):
         ])
         h_vec = np.array([Vmax, -Vmin, Wmax, -Wmin, Delta_ub, -Delta_lb, 0, 0])
 
-        #cbf_margin = 0.05
-        #cbf_eff = cbf - cbf_margin
-        #h_push = 0.4      # where the extra push starts
-        #h0_max = 0.05      # max margin
-
-        #h0 = h0_max * np.clip((h_push - cbf) / max(h_push, 1e-6), 0.0, 1.0)
-        cbf_eff = cbf #- h0
-
         G[6][0] = -((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))
         G[6][1] = -dcbf_yaw
         G[6][2] = 0
-        h_vec[6] = C_alpha * cbf_eff
+        h_vec[6] = C_alpha * cbf
 
         G[7][0] = 0
         G[7][1] = normalize_difference(yaw - heading)
