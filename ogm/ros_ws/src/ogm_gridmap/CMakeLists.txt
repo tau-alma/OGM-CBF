@@ -15,6 +15,7 @@ set(ogm_gridmap_VERSION
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(gridmap REQUIRED)
@@ -59,6 +60,7 @@ target_include_directories(offset_odom PUBLIC
 ament_target_dependencies(offset_odom
   rclcpp
   std_msgs
+  std_srvs
   sensor_msgs
   nav_msgs
   geometry_msgs
@@ -75,6 +77,7 @@ target_include_directories(scan2pcd PUBLIC
 ament_target_dependencies(scan2pcd
 	rclcpp
 	std_msgs
+	std_srvs
 	sensor_msgs
 	nav_msgs
 	geometry_msgs
@@ -109,8 +112,9 @@ target_include_directories(occgrid PUBLIC
 ament_target_dependencies(occgrid
 	rclcpp
 	std_msgs
+	std_srvs
 	sensor_msgs
-  nav_msgs
+        nav_msgs
 	pcl_ros
 	pcl_conversions
   OpenCV

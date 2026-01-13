@@ -4,6 +4,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
+#include "std_srvs/srv/trigger.hpp"
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -15,6 +16,8 @@
 
 #include "gridmap.h"
 
+using namespace std::chrono_literals;
+
 class GridmapNode  : public rclcpp::Node
 {
   private:
@@ -22,6 +25,10 @@ class GridmapNode  : public rclcpp::Node
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr pub_grid;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_img;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcd;
+    rclcpp::TimerBase::SharedPtr timer_map;
+
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr trigger_on;
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr trigger_off;
 
     std::string map_frame;
 
@@ -29,6 +36,7 @@ class GridmapNode  : public rclcpp::Node
     uint32_t height;
     uint32_t width;
 
+    bool do_update;
     bool do_pub_grid;
     bool do_pub_img;
 
@@ -122,27 +130,40 @@ class GridmapNode  : public rclcpp::Node
 		      std::chrono::duration<double, std::milli>(wall_conv - wall_start));
 
 
-      gridmap->update(pcd);
-
+      if (do_update) gridmap->update(pcd);
       auto wall_update = std::chrono::high_resolution_clock::now();
       RCLCPP_DEBUG(this->get_logger(), "wall update: %lf ms",
 		      std::chrono::duration<double, std::milli>(wall_update - wall_conv));
+    }
+
+
+    void tick_map()
+    {
+      rclcpp::Time ts = this->now();
 
       if (do_pub_grid) publish_grid(ts);
       if (do_pub_img) publish_image(ts);
-
-      auto wall_pub = std::chrono::high_resolution_clock::now();
-      RCLCPP_DEBUG(this->get_logger(), "wall pub: %lf ms",
-		      std::chrono::duration<double, std::milli>(wall_pub - wall_update));
-
-      RCLCPP_DEBUG(this->get_logger(), "wall full callback: %lf ms",
-		      std::chrono::duration<double, std::milli>(wall_pub - wall_start));
-
     }
-  
+
+    bool callback_on(
+		    const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+		    const std::shared_ptr<std_srvs::srv::Trigger::Response> res)
+    {
+	do_update = true;
+    }
+    bool callback_off(
+		    const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+		    const std::shared_ptr<std_srvs::srv::Trigger::Response> res)
+    {
+	do_update = false;
+    }
+
+
   public:
     GridmapNode() : Node("gridmap")
     {
+      do_update = true;
+
       map_frame = this->declare_parameter("map_frame", "map_frame");
       RCLCPP_INFO(this->get_logger(), "map_frame: %s", map_frame.c_str());
 
@@ -182,6 +203,22 @@ class GridmapNode  : public rclcpp::Node
 		      rclcpp::QoS(rclcpp::SensorDataQoS()),
 		      std::bind(&GridmapNode::callback_pcd, this, std::placeholders::_1)
 		      );
+
+      timer_map = this->create_wall_timer(
+		      100ms,
+		      std::bind(&GridmapNode::tick_map, this)
+		      );
+
+      trigger_on  = this->create_service<std_srvs::srv::Trigger>(
+			    "mapping_on",
+			    std::bind(&GridmapNode::callback_on, this,
+				    std::placeholders::_1, std::placeholders::_2)
+			    );
+      trigger_off  = this->create_service<std_srvs::srv::Trigger>(
+			    "mapping_off",
+			    std::bind(&GridmapNode::callback_off, this,
+				    std::placeholders::_1, std::placeholders::_2)
+			    );
 
     }
 };
