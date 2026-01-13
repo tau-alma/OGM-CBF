@@ -21,6 +21,7 @@ setup(
     entry_points={
         'console_scripts': [
             'map_crop_memory = ogm_tools.map_crop_memory:main',
+            'camera_broadcaster = ogm_tools.camera_broadcaster:main',
         ],
     },
 )

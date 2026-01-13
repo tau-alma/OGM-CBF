@@ -59,9 +59,34 @@ def generate_launch_description():
                 ],
             ) 
 
+    sbr_base_link_2_april_link = Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            name="sbr_base_link_2_april_link",
+            arguments=["-0.163", "-0.033", "0.",
+                       "0.", "0.", "1.", "0.",
+                       "base_link", "april_link"],
+            namespace=ns,
+            parameters=[
+                {"use_sim_time" : use_sim_time},
+                ],
+            ) 
+
+    camera_br = Node(
+            package="ogm_tools",
+            executable="camera_broadcaster",
+            name="l500_broadcaster" ,
+            output={'both': 'screen'} ,
+            namespace=ns,
+            parameters=[
+                {"use_sim_time" : use_sim_time},
+                ],
+            ) 
 
     return LaunchDescription([
         offset_odom,
         odom_2_tf,
         sbr_base_link_2_front_lidar,
+        sbr_base_link_2_april_link,
+        camera_br,
     ])
