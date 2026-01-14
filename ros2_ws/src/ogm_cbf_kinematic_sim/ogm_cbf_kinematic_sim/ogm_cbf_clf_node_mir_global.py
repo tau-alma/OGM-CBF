@@ -135,11 +135,16 @@ class MobileRobot(Node):
         
         self.subscription_2 = self.create_subscription(Image, '/ogm/imgmap', self.listener_callback_map, qos_profile_sensor_data)
         self.publisher_image_ = self.create_publisher(Image, '/cbf_image', 1)
-        self.contour_timer_ = self.create_timer(1, self.publish_image)
+        #self.contour_timer_ = self.create_timer(1, self.publish_image)
         self.bridge = CvBridge()
         self.publisher_cbf_ = self.create_publisher(Float64MultiArray, '/cbf_array', 1)
         self.publisher_plot_twist_ = self.create_publisher(TwistStamped, '/plot_vel', 1)
         self.twist_publisher_ = self.create_publisher(Twist, 'cmd_vel', 1)
+
+        self.map_erode = np.zeros((10, 10), dtype=np.uint8)
+        self.publisher_erode_image_ = self.create_publisher(Image, '/erode_map_image', 1)
+        self.contour_timer_2_ = self.create_timer(1.0, self.publish_erode_image)
+        
 
         vel_pub_time = 1.0 / controller_frequency
         self.twist_timer = self.create_timer(vel_pub_time, self.publish_velocity)
@@ -323,6 +328,14 @@ class MobileRobot(Node):
         except Exception as e:
             self.get_logger().error(f"Error in publish_image: {e}")
 
+
+    def publish_erode_image(self):
+        """Publish the constructed image on ROS."""
+        img_msg = self.bridge.cv2_to_imgmsg(self.map_erode)
+        # Use the map's timestamp if available
+        img_msg.header.stamp = self.time_map.to_msg() if isinstance(self.time_map, Time) else self.get_clock().now().to_msg()
+        self.publisher_erode_image_.publish(img_msg)
+
         # try:
         #     #normalize sdf for visualization
         #     #print("-------------we are visualizing sdf-----------------")
@@ -375,9 +388,11 @@ class MobileRobot(Node):
         map_img = np.asarray(map_img)
         map_img = 255 - map_img  # Invert colors: obstacles=255, free=0
 
-        k = 6
+        k = 7
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2*k + 1, 2*k + 1))
         map_img = cv2.erode(map_img, kernel, iterations=1)
+
+        self.map_erode = map_img
 
         #map_img = np.ones_like(map_img)*255
         self.map_height, self.map_width = map_img.shape
@@ -1070,7 +1085,7 @@ class MobileRobot(Node):
         """
         global vel_prev, dPsi_prev
         # Hyperparameters and reference values
-        C_alpha = 0.6#5#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
+        C_alpha = 0.3#5#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
         P_alpha = 1.0
         Kv = 1.0
         Kw = 0.01
@@ -1100,7 +1115,7 @@ class MobileRobot(Node):
 
         yaw = self.yaw
         l_a = 0.25#0.025#0.1
-        l_b = 0.1
+        l_b = 0.2
         l_s = -np.sqrt(l_a**2 + l_b**2) #-l_a -(l_a*beta)# * (2*np.pi*beta + 1)
         
         eta = 0.0
