@@ -77,8 +77,8 @@ def generate_launch_description():
                 {"do_pub_img" : True},
                 {"map_frame" : "map"},
                 {"cell_size" : 0.05},
-                {"height" : 20.},
-                {"width" : 25.},
+                {"height" : 30.},
+                {"width" : 50.},
                 {"s_target" : 0.95},
                 ],
         )

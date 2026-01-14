@@ -64,7 +64,7 @@ def generate_launch_description():
             executable="static_transform_publisher",
             name="sbr_base_link_2_april_link",
             arguments=["-0.163", "-0.033", "0.",
-                       "0.", "0.", "1.", "0.",
+                       "0.", "0.", "0.7071", "0.7071",
                        "base_link", "april_link"],
             namespace=ns,
             parameters=[
