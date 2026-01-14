@@ -72,21 +72,9 @@ def generate_launch_description():
                 ],
             ) 
 
-    camera_br = Node(
-            package="ogm_tools",
-            executable="camera_broadcaster",
-            name="l500_broadcaster" ,
-            output={'both': 'screen'} ,
-            namespace=ns,
-            parameters=[
-                {"use_sim_time" : use_sim_time},
-                ],
-            ) 
-
     return LaunchDescription([
         offset_odom,
         odom_2_tf,
         sbr_base_link_2_front_lidar,
         sbr_base_link_2_april_link,
-        camera_br,
     ])

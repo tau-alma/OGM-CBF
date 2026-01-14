@@ -12,17 +12,23 @@ class CameraBroadcaster(Node):
 
     def __init__(self):
         super().__init__('camera_broadcaster')
+
+        self.declare_parameter('map_frame', 'map')
+        self.declare_parameter('tag_link_frame', 'april_link')
+        self.declare_parameter('tag_frame', 'tagStandard41h12:0')
+        self.declare_parameter('camera_frame', 'l500_color_optical_frame')
+        self.declare_parameter('tag_init_frame', 'april_init_link')
+
+        self.map_frame = self.get_parameter('map_frame').value
+        self.tag_link_frame = self.get_parameter('tag_link_frame').value
+        self.tag_frame = self.get_parameter('tag_frame').value
+        self.camera_frame = self.get_parameter('camera_frame').value
+        self.tag_init_frame = self.get_parameter('tag_init_frame').value
         
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.tf_static_broadcaster = StaticTransformBroadcaster(self)
 
-        self.map_frame = 'base_link'
-        self.tag_link_frame = 'april_link'
-        self.tag_frame = 'tagStandard41h12:0'
-        self.camera_frame = 'l500_color_optical_frame'
-        self.tag_init_frame = 'april_init_link'
-        
         self.timer = self.create_timer(1.0, self.tick)
 
         self.t_map_2_tag_link = None
