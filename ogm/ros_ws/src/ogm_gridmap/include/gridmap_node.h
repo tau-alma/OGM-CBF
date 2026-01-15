@@ -14,6 +14,7 @@
 #include <opencv2/opencv.hpp>   
 #include <cv_bridge/cv_bridge.h>
 
+#include "sensor_model.h"
 #include "gridmap.h"
 
 using namespace std::chrono_literals;
@@ -31,6 +32,8 @@ class GridmapNode  : public rclcpp::Node
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr trigger_off;
 
     std::string map_frame;
+
+    std::shared_ptr<SensorModel> sensor_model;
 
     float cell_size;
     uint32_t height;
@@ -129,8 +132,7 @@ class GridmapNode  : public rclcpp::Node
       RCLCPP_DEBUG(this->get_logger(), "wall conversions: %lf ms",
 		      std::chrono::duration<double, std::milli>(wall_conv - wall_start));
 
-
-      if (do_update) gridmap->update(pcd);
+      if (do_update) gridmap->update(*sensor_model, pcd);
       auto wall_update = std::chrono::high_resolution_clock::now();
       RCLCPP_DEBUG(this->get_logger(), "wall update: %lf ms",
 		      std::chrono::duration<double, std::milli>(wall_update - wall_conv));
@@ -181,12 +183,28 @@ class GridmapNode  : public rclcpp::Node
       float s_target = this->declare_parameter("s_target", .95);
       RCLCPP_INFO(this->get_logger(), "s_target: %f", s_target);
 
+      float sm_hit_dist = this->declare_parameter("sensor_model_hit_dist", .05);
+      RCLCPP_INFO(this->get_logger(), "sensor_model_hit_dist: %f", sm_hit_dist);
+
+      float sm_min_dist = this->declare_parameter("sensor_model_min_dist", .05);
+      RCLCPP_INFO(this->get_logger(), "sensor_model_min_dist: %f", sm_min_dist);
+
+      float sm_max_dist = this->declare_parameter("sensor_model_max_dist", 5.0);
+      RCLCPP_INFO(this->get_logger(), "sensor_model_max_dist: %f", sm_max_dist);
+
+      bool sm_partial_trace = this->declare_parameter("sensor_model_partial_trace", true);
+      RCLCPP_INFO(this->get_logger(), "sensor_model_partial_trace: %x", sm_partial_trace);
+
       do_pub_grid = this->declare_parameter("do_pub_grid", false);
       RCLCPP_INFO(this->get_logger(), "do_pub_grid: %x", do_pub_grid);
 
       do_pub_img = this->declare_parameter("do_pub_img", false);
       RCLCPP_INFO(this->get_logger(), "do_pub_img: %x", do_pub_img);
 
+      sensor_model = std::make_shared<SensorModel>(SensorModel(
+            sm_hit_dist,
+            sm_min_dist, sm_max_dist,
+            sm_partial_trace));
       gridmap = std::make_shared<Gridmap>(Gridmap(height,width,cell_size, s_target));
 
       pub_grid = this->create_publisher<nav_msgs::msg::OccupancyGrid>(

@@ -4,6 +4,8 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
+#include "sensor_model.h"
+
 class Gridmap
 {
   private:
@@ -14,11 +16,6 @@ class Gridmap
     float cell_size;
 
     float s_target;
-
-    static constexpr float HIT_DIST = 0.05;
-
-    static constexpr float MIN_DIST = 0.05;
-    static constexpr float MAX_DIST = 10.0;
 
     Eigen::MatrixXf map;
 
@@ -111,7 +108,10 @@ class Gridmap
       return pts;
     }
 
-    void update(float sensor_x, float sensor_y, float obs_x, float obs_y)
+    void update(
+        SensorModel& sensor_model,
+        float sensor_x, float sensor_y,
+        float obs_x, float obs_y)
     {
 
       float dst_sensor_obs = std::sqrt((obs_x - sensor_x)*(obs_x - sensor_x) + (obs_y - sensor_y)*(obs_y - sensor_y));
@@ -126,9 +126,11 @@ class Gridmap
         float dst_sensor = std::sqrt((x - sensor_x)*(x - sensor_x) + (y - sensor_y)*(y - sensor_y));
         float dst_obs = std::sqrt((x - obs_x)*(x - obs_x) + (y - obs_y)*(y - obs_y));
 
-        if ( dst_sensor < MIN_DIST || dst_sensor > MAX_DIST || dst_sensor_obs > MAX_DIST)
+        if ( dst_sensor < sensor_model.min_dist 
+            || dst_sensor > sensor_model.max_dist 
+            || (!sensor_model.partial_trace && dst_sensor_obs > sensor_model.max_dist))
         {}
-        else if ( dst_obs < HIT_DIST )
+        else if ( dst_obs < sensor_model.hit_dist )
         {
           update_occ(x,y);
         }
@@ -153,7 +155,10 @@ class Gridmap
       map = Eigen::MatrixXf::Constant(h,w,0.5);
     }
 
-    void update(pcl::PointCloud<pcl::PointXYZI>& pcd)
+    void update(
+        SensorModel& sensor_model,
+        pcl::PointCloud<pcl::PointXYZI>& pcd
+        )
     {
       pcl::PointXYZI ref_pt;
       for (pcl::PointXYZI p : pcd)
@@ -164,7 +169,10 @@ class Gridmap
         }
         else
         {
-          update(ref_pt.x, ref_pt.y, p.x, p.y);
+          update(
+              sensor_model,
+              ref_pt.x, ref_pt.y,
+              p.x, p.y);
         }
       }
     }

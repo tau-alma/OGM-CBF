@@ -80,6 +80,11 @@ def generate_launch_description():
                 {"height" : 30.},
                 {"width" : 50.},
                 {"s_target" : 0.95},
+                {"s_target" : 0.95},
+                {"sensor_model_hit_dist" : 0.05},
+                {"sensor_model_min_dist" : 0.05},
+                {"sensor_model_max_dist" : 5.00},
+                {"sensor_model_partial_trace" : True},
                 ],
         )
 
