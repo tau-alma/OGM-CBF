@@ -126,9 +126,10 @@ class Gridmap
         float dst_sensor = std::sqrt((x - sensor_x)*(x - sensor_x) + (y - sensor_y)*(y - sensor_y));
         float dst_obs = std::sqrt((x - obs_x)*(x - obs_x) + (y - obs_y)*(y - obs_y));
 
-        if ( dst_sensor < sensor_model.min_dist 
-            || dst_sensor > sensor_model.max_dist 
-            || (!sensor_model.partial_trace && dst_sensor_obs > sensor_model.max_dist))
+        if ( dst_sensor < sensor_model.low_crop_dist 
+            || dst_sensor > sensor_model.high_crop_dist 
+            || dst_sensor_obs < sensor_model.min_dist
+            || dst_sensor_obs > sensor_model.max_dist)
         {}
         else if ( dst_obs < sensor_model.hit_dist )
         {

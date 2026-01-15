@@ -189,11 +189,14 @@ class GridmapNode  : public rclcpp::Node
       float sm_min_dist = this->declare_parameter("sensor_model_min_dist", .05);
       RCLCPP_INFO(this->get_logger(), "sensor_model_min_dist: %f", sm_min_dist);
 
-      float sm_max_dist = this->declare_parameter("sensor_model_max_dist", 5.0);
+      float sm_low_crop_dist = this->declare_parameter("sensor_model_low_crop_dist", .05);
+      RCLCPP_INFO(this->get_logger(), "sensor_model_low_crop_dist: %f", sm_low_crop_dist);
+
+      float sm_max_dist = this->declare_parameter("sensor_model_max_dist", 20.0);
       RCLCPP_INFO(this->get_logger(), "sensor_model_max_dist: %f", sm_max_dist);
 
-      bool sm_partial_trace = this->declare_parameter("sensor_model_partial_trace", true);
-      RCLCPP_INFO(this->get_logger(), "sensor_model_partial_trace: %x", sm_partial_trace);
+      float sm_high_crop_dist = this->declare_parameter("sensor_model_high_crop_dist", 5.0);
+      RCLCPP_INFO(this->get_logger(), "sensor_model_high_crop_dist: %f", sm_high_crop_dist);
 
       do_pub_grid = this->declare_parameter("do_pub_grid", false);
       RCLCPP_INFO(this->get_logger(), "do_pub_grid: %x", do_pub_grid);
@@ -203,8 +206,8 @@ class GridmapNode  : public rclcpp::Node
 
       sensor_model = std::make_shared<SensorModel>(SensorModel(
             sm_hit_dist,
-            sm_min_dist, sm_max_dist,
-            sm_partial_trace));
+            sm_min_dist, sm_low_crop_dist,
+            sm_max_dist, sm_high_crop_dist));
       gridmap = std::make_shared<Gridmap>(Gridmap(height,width,cell_size, s_target));
 
       pub_grid = this->create_publisher<nav_msgs::msg::OccupancyGrid>(

@@ -8,19 +8,23 @@ class SensorModel
     float hit_dist;
     
     float min_dist;
+    float low_crop_dist;
+    
     float max_dist;
-
-    bool partial_trace;
+    float high_crop_dist;
 
     SensorModel(
         float _hit_dist,
-        float _min_dist, float _max_dist,
-        bool _partial_trace)
+        float _min_dist, float _low_crop_dist,
+        float _max_dist, float _high_crop_dist)
     {
       hit_dist = _hit_dist;
+
       min_dist = _min_dist;
+      low_crop_dist = _low_crop_dist;
+      
       max_dist = _max_dist;
-      partial_trace = _partial_trace;
+      high_crop_dist = _high_crop_dist;
     }
 };
 

@@ -83,8 +83,9 @@ def generate_launch_description():
                 {"s_target" : 0.95},
                 {"sensor_model_hit_dist" : 0.05},
                 {"sensor_model_min_dist" : 0.05},
-                {"sensor_model_max_dist" : 5.00},
-                {"sensor_model_partial_trace" : True},
+                {"sensor_model_low_crop_dist" : 0.05},
+                {"sensor_model_max_dist" : 20.00},
+                {"sensor_model_high_crop_dist" : 5.00},
                 ],
         )
 
