@@ -9,6 +9,11 @@
 class Gridmap
 {
   private:
+
+    uint8_t FLAG_NONE = 0;	  
+    uint8_t FLAG_UPDATE_FREE = 1;	  
+    uint8_t FLAG_UPDATE_OCC = 2;	  
+
     uint32_t h;
     uint32_t w;
     float origin_x;
@@ -17,6 +22,7 @@ class Gridmap
 
     float s_target;
 
+    Eigen::Matrix<uint8_t, Eigen::Dynamic, Eigen::Dynamic> flags;
     Eigen::MatrixXf map;
 
     std::pair<int, int> coord2sub(float x, float y)
@@ -33,10 +39,19 @@ class Gridmap
       return false;
     }
 
-    void update_occ(float x, float y)
+
+    void flag_occ(float x, float y)
     {
       int i, j;
       std::tie(i,j) = coord2sub(x, y);
+      if (is_in_map(i, j))
+      {
+	flags(i, j) = Gridmap::FLAG_UPDATE_OCC;
+      }
+    }
+
+    void update_occ(int i, int j)
+    {
       if (is_in_map(i, j))
       {
         float p_z_occ = (1 + s_target) / 2;
@@ -46,10 +61,22 @@ class Gridmap
       }
     }
 
-    void update_free(float x, float y)
+
+    void flag_free(float x, float y)
     {
       int i, j;
       std::tie(i,j) = coord2sub(x, y);
+      if (is_in_map(i, j))
+      {
+        if (flags(i, j) != Gridmap::FLAG_UPDATE_OCC)
+	{
+		flags(i, j) = Gridmap::FLAG_UPDATE_FREE;
+	}	
+      }
+    }
+
+    void update_free(int i, int j)
+    {
       if (is_in_map(i, j))
       {
         float p_z_occ = (1 + s_target) / 2;
@@ -105,6 +132,8 @@ class Gridmap
         }
       }
 
+      pts.push_back(std::make_pair(obs_x,obs_y));
+
       return pts;
     }
 
@@ -133,11 +162,13 @@ class Gridmap
         {}
         else if ( dst_obs < sensor_model.hit_dist )
         {
-          update_occ(x,y);
+          //update_occ(x,y);
+          flag_occ(x,y);
         }
         else
         {
-          update_free(x,y);
+          //update_free(x,y);
+          flag_free(x,y);
         }
       }
     }
@@ -153,6 +184,9 @@ class Gridmap
       cell_size = _cell_size;
       s_target = _s_target;
 
+      flags = Eigen::Matrix<uint8_t, Eigen::Dynamic, Eigen::Dynamic>::Constant(
+		      h,w,
+		      Gridmap::FLAG_NONE);
       map = Eigen::MatrixXf::Constant(h,w,0.5);
     }
 
@@ -174,6 +208,22 @@ class Gridmap
               sensor_model,
               ref_pt.x, ref_pt.y,
               p.x, p.y);
+        }
+      }
+      
+      for (int i = 0; i < h; ++i)
+      {
+        for (int j = 0; j < w; ++j)
+        {
+          if (flags(i,j) == Gridmap::FLAG_UPDATE_OCC)
+	  {
+	    update_occ(i,j);  
+	  }
+	  else if(flags(i,j) == Gridmap::FLAG_UPDATE_FREE)
+	  {
+	    update_free(i,j);  
+	  }
+	  flags(i,j) = Gridmap::FLAG_NONE;
         }
       }
     }
