@@ -42,7 +42,7 @@ class Gridmap
         float p_z_occ = (1 + s_target) / 2;
         float p_z_free = (1 - s_target) / 2;
         float p_m = map(i,j);
-        map(i,j) = p_z_occ*p_m / (p_z_occ*p_m + p_z_free*p_m);
+        map(i,j) = p_z_occ*p_m / (p_z_occ*p_m + p_z_free*(1-p_m));
       }
     }
 
@@ -55,7 +55,7 @@ class Gridmap
         float p_z_occ = (1 + s_target) / 2;
         float p_z_free = (1 - s_target) / 2;
         float p_m = map(i,j);
-        map(i,j) = p_z_free*p_m / (p_z_occ*p_m + p_z_free*p_m);
+        map(i,j) = p_z_free*p_m / (p_z_occ*p_m + p_z_free*(1-p_m));
       }
     }
 
