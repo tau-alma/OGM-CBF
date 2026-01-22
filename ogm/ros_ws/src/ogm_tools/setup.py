@@ -22,6 +22,7 @@ setup(
         'console_scripts': [
             'map_crop_memory = ogm_tools.map_crop_memory:main',
             'camera_broadcaster = ogm_tools.camera_broadcaster:main',
+            'tf2odom = ogm_tools.tf2odom:main',
         ],
     },
 )
