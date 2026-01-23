@@ -8,7 +8,7 @@ from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 from nav_msgs.msg import Odometry
 
-class TransformAligner(Node):
+class TF2Odom(Node):
 
     def __init__(self):
         super().__init__('tf2odom')
@@ -23,7 +23,7 @@ class TransformAligner(Node):
         
         self.pub = self.create_publisher(Odometry, 'odom', 1)
 
-        self.timer = self.create_timer(.01, self.tick)
+        self.timer = self.create_timer(.1, self.tick)
 
     def tick(self):
 
@@ -51,7 +51,7 @@ class TransformAligner(Node):
                     )
             fsf = tf_msg_to_target.header.stamp.sec + tf_msg_to_target.header.stamp.nanosec/1e9 
         except TransformException as ex:
-            print (ex)
+            self.get_logger().info (str(ex))
             fsf = -1
             tf_msg_to_target = None
         return fsf, tf_msg_to_target    
