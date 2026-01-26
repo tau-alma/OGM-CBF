@@ -139,6 +139,9 @@ class MobileRobot(Node):
         vel_pub_time = 1.0 / controller_frequency
         self.twist_timer = self.create_timer(vel_pub_time, self.publish_velocity)
 
+        self.publisher_erode_image_ = self.create_publisher(Image, '/erode_map_image', 1)
+        self.contour_timer_2_ = self.create_timer(1.0, self.publish_erode_image)
+
         self.start_time = self.get_clock().now().nanoseconds
 
         # Initialize state variables
@@ -207,6 +210,9 @@ class MobileRobot(Node):
         self.map_resolution = 0.05
         self.map_origin_x = 0.0
         self.map_origin_y = 0.0
+        self.map_erode = np.zeros((self.map_height, self.map_width), dtype=np.uint8)
+
+
 
     def sdf_at_world(self, x_world, y_world):
         img_height = self.sdf.shape[0]
@@ -320,6 +326,15 @@ class MobileRobot(Node):
         except Exception as e:
             self.get_logger().error(f"Error in publish_image: {e}")
 
+    def publish_erode_image(self):
+        """Publish the constructed image on ROS."""
+        img_msg = self.bridge.cv2_to_imgmsg(self.map_erode)
+        # Use the map's timestamp if available
+        img_msg.header.stamp = self.time_map.to_msg() if isinstance(self.time_map, Time) else self.get_clock().now().to_msg()
+        self.publisher_erode_image_.publish(img_msg)
+       
+
+
     def listener_callback_map(self, msg: Image):
         """
         When a map is received, use its dimensions to create the sdf and gradient arrays.
@@ -332,9 +347,12 @@ class MobileRobot(Node):
             map_img = np.asarray(map_img)
             map_img = cv2.bitwise_not(map_img)  # Invert colors: obstacles=255, free=0
 
-            k = 3
+            k = 1
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2*k + 1, 2*k + 1))
             map_img = cv2.erode(map_img, kernel, iterations=1)
+
+            self.map_erode = map_img
+            
 
             self.map_height, self.map_width = map_img.shape
             self.recieved_map = True
@@ -477,7 +495,7 @@ class MobileRobot(Node):
         """
         global vel_prev, dPsi_prev
         # Hyperparameters and reference values
-        C_alpha = 0.1#5#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
+        C_alpha = 0.9#5#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
         P_alpha = 1.0
         Kv = 1.0
         Kw = 0.01
@@ -486,8 +504,15 @@ class MobileRobot(Node):
         P_gamma = 1.0
         Vmax =0.5 #self.get_parameter('Vmax').value #1.0
         Vmin = -0.5#self.get_parameter('Vmin').value #-1.0
-        Wmax = 0.5 * np.pi#self.get_parameter('Wmax').value #4 * np.pi
-        Wmin = -0.5* np.pi#self.get_parameter('Wmin').value #-4 * np.pi
+        Wmax = 0.25 * np.pi#self.get_parameter('Wmax').value #4 * np.pi
+        Wmin = -0.25* np.pi#self.get_parameter('Wmin').value #-4 * np.pi
+
+        #if self.cbf_prev < 0.25:
+        #    Wmax = 2.25 * np.pi#self.get_parameter('Wmax').value #4 * np.pi
+        #    Wmin = -2.25* np.pi#self.get_parameter('Wmin').value #-4 * np.pi
+
+
+        
         Delta_ub = 1.0#0.5#self.get_parameter('Delta_ub').value #0.5
         Delta_lb = -1.0#-0.5#self.get_parameter('Delta_lb').value #-0.5
         #heading = normalize_angle(np.pi - np.pi/6)
@@ -506,11 +531,11 @@ class MobileRobot(Node):
 
 
         yaw = self.yaw
-        l_a = 0.25#0.025#0.1
-        l_b = 0.1
+        l_a = 2.25#0.025#0.1
+        l_b = 2.25
         l_s = -np.sqrt(l_a**2 + l_b**2) #-l_a -(l_a*beta)# * (2*np.pi*beta + 1)
         
-        
+        eta = 0.0
         
         if math.isnan(eta):
             self.get_logger().warn("eta is NaN!")
@@ -538,7 +563,7 @@ class MobileRobot(Node):
 
         print(f"eta: {np.rad2deg(eta)}")
 
-        print(f"dcbf_x: {dcbf_x}, dcbf_y: {dcbf_y}, dcbf_yaw: {dcbf_yaw}")
+        print(f"dcbf_x: {dcbf_x:.2f}, dcbf_y: {dcbf_y:.2f}, dcbf_yaw: {dcbf_yaw:.2f}")
        
 
         Vref = Vmax
@@ -588,15 +613,15 @@ class MobileRobot(Node):
             self.cbf_prev = cbf
 
             
-            print(f"A (Av) is: {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))}")
-            print(f"B (Bw) is: {dcbf_yaw}")
-            print(f"QP Solution: vel={vel}, omega={dPsi}")
-            print(f"Av is{((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel}")
-            print(f"Bw is {dcbf_yaw * dPsi}")
-            print(f"Av + Bw is {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel + dcbf_yaw * dPsi}")
-            print(f"cbf: {cbf}, cbf_dot: {cbf_dot}, cbf_dot + alpha*cbf: {cbf_dot_alpha_cbf}")
-            print(f"cbf_dot (true): {true_cbf_dot}, difference: {cbf_dot - true_cbf_dot}")
-            print(f"sdf: {sdf}, eta (deg): {np.rad2deg(eta)}, cbf-sdf: {cbf - sdf}")
+            print(f"A (Av) is: {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw))):.2f}")
+            print(f"B (Bw) is: {dcbf_yaw:.2f}")
+            print(f"QP Solution: vel={vel:.2f}, omega={dPsi:.2f}")
+            print(f"Av is{((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel:.2f}")
+            print(f"Bw is {dcbf_yaw * dPsi:.2f}")
+            print(f"Av + Bw is {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel + dcbf_yaw * dPsi:.2f}")
+            print(f"cbf: {cbf:.2f}, cbf_dot: {cbf_dot:.2f}, cbf_dot + alpha*cbf: {cbf_dot_alpha_cbf:.2f}")
+            print(f"cbf_dot (true): {true_cbf_dot:.2f}, difference: {cbf_dot - true_cbf_dot:.2f}")
+            print(f"sdf: {sdf:.2f}, eta (deg): {np.rad2deg(eta):.2f}, cbf-sdf: {cbf - sdf:.2f}")
             print("--------------------------------------------------")
             
             
