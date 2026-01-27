@@ -5,9 +5,10 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Status1
+        - /Grid1
+        - /odom1
         - /odom1/Topic1
         - /TF1
-        - /PointCloud21
         - /PointCloud21/Topic1
         - /Map1/Status1
         - /Image1/Topic1
@@ -37,7 +38,7 @@ Visualization Manager:
   Class: ""
   Displays:
     - Alpha: 0.5
-      Cell Size: 1
+      Cell Size: 10
       Class: rviz_default_plugins/Grid
       Color: 160; 160; 164
       Enabled: true
@@ -99,15 +100,51 @@ Visualization Manager:
         All Enabled: true
         april_link:
           Value: true
+        back_laser_link:
+          Value: true
         base_footprint:
           Value: true
         base_link:
           Value: true
+        camera_floor_color_frame:
+          Value: true
+        camera_floor_color_optical_frame:
+          Value: true
+        camera_floor_depth_optical_frame:
+          Value: true
+        camera_floor_link:
+          Value: true
+        camera_infra1_frame:
+          Value: true
         front_laser_link:
+          Value: true
+        imu_link:
           Value: true
         map:
           Value: true
         odom:
+          Value: true
+        t265_accel_frame:
+          Value: true
+        t265_accel_optical_frame:
+          Value: true
+        t265_aligned_depth_to_fisheye1_frame:
+          Value: true
+        t265_fisheye1_frame:
+          Value: true
+        t265_fisheye1_optical_frame:
+          Value: true
+        t265_fisheye2_frame:
+          Value: true
+        t265_fisheye2_optical_frame:
+          Value: true
+        t265_gyro_frame:
+          Value: true
+        t265_gyro_optical_frame:
+          Value: true
+        t265_link:
+          Value: true
+        t265_pose_frame:
           Value: true
       Marker Scale: 1
       Name: TF
@@ -121,6 +158,22 @@ Visualization Manager:
               {}
             front_laser_link:
               {}
+            t265_pose_frame:
+              t265_link:
+                t265_accel_frame:
+                  t265_accel_optical_frame:
+                    {}
+                t265_aligned_depth_to_fisheye1_frame:
+                  t265_fisheye1_optical_frame:
+                    {}
+                t265_fisheye1_frame:
+                  {}
+                t265_fisheye2_frame:
+                  t265_fisheye2_optical_frame:
+                    {}
+                t265_gyro_frame:
+                  t265_gyro_optical_frame:
+                    {}
           odom:
             base_footprint:
               {}
@@ -259,7 +312,7 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 131.8098602294922
+      Scale: -50.03154373168945
       Target Frame: base_link
       Value: TopDownOrtho (rviz_default_plugins)
       X: 0

@@ -5,6 +5,10 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
 
+DIRNAME = os.path.realpath(os.path.dirname(__file__))
+
+print (DIRNAME)
+
 def generate_launch_description():
 
     ns="ogm"
@@ -17,9 +21,7 @@ def generate_launch_description():
             name='rviz',
             output='screen',
             namespace=ns,
-            parameters=[
-                {"use_sim_time" : use_sim_time},
-                ],
+            arguments=['-d', '%s/ogm.rviz' % DIRNAME],
         )
 
 

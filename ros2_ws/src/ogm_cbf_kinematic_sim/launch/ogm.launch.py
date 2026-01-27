@@ -58,6 +58,8 @@ def generate_launch_description():
                 {"odom_frame" : "map"},
                 {"link_frame" : "base_link"},
                 {"target_frame" : "front_laser_link"},
+                {"sync_slack" : 0.0125},
+                {"sync_window" : 1.0},
                 ],
         )
 
