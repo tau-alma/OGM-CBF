@@ -11,6 +11,7 @@
 
 #include "pcl_ros/transforms.hpp"
 
+#include "manual_sync.h"
 
 class TransformerNode  : public rclcpp::Node
 {
@@ -20,6 +21,9 @@ class TransformerNode  : public rclcpp::Node
     
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcd;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odom;
+    std::shared_ptr<ManualSync<
+      nav_msgs::msg::Odometry::SharedPtr,
+      sensor_msgs::msg::PointCloud2::SharedPtr>> manual_sync;
 
     std::shared_ptr<tf2_ros::TransformListener> tf_listener{nullptr};
     std::unique_ptr<tf2_ros::Buffer> tf_buffer;
@@ -155,14 +159,38 @@ class TransformerNode  : public rclcpp::Node
       return get_T_matrix(transform);
     }
 
+    void process(double stamp)
+    {
+      //RCLCPP_INFO(this->get_logger(), "processing");
+      auto pair = manual_sync->pop(stamp);
+      //RCLCPP_INFO(this->get_logger(), "popped");
+
+      if (pair.first && pair.second)
+      {
+        const nav_msgs::msg::Odometry::SharedPtr msg_odom = *pair.first;
+        const sensor_msgs::msg::PointCloud2::SharedPtr msg_pcd = *pair.second;
+       
+        rclcpp::Time odom_stamp(msg_odom->header.stamp);
+        rclcpp::Time pcd_stamp(msg_pcd->header.stamp);
+
+        RCLCPP_INFO(this->get_logger(), "sync odom-pcd at %lf--%lf",
+            odom_stamp.seconds(),
+            pcd_stamp.seconds());
+        
+        T_odom2link = get_T_matrix(msg_odom);
+      }
+    }
+
     void callback_odom(
         const nav_msgs::msg::Odometry::SharedPtr msg_odom
         )
     {
       rclcpp::Time odom_stamp(msg_odom->header.stamp);
       //RCLCPP_INFO(this->get_logger(), "odom at %lf", odom_stamp.seconds());
-
-      T_odom2link = get_T_matrix(msg_odom);
+      manual_sync->push_t1(msg_odom, odom_stamp.seconds());
+      //RCLCPP_INFO(this->get_logger(), "pushed");
+      process(odom_stamp.seconds());  
+      //RCLCPP_INFO(this->get_logger(), "processed");
     }
 
     void callback_pcd(
@@ -171,14 +199,10 @@ class TransformerNode  : public rclcpp::Node
     {
       rclcpp::Time pcd_stamp(msg_pcd->header.stamp);
       //RCLCPP_INFO(this->get_logger(), "pcd at %lf", pcd_stamp.seconds());
-      
-      Eigen::Matrix4f T_map2sensor =  T_odom2link * T_link2sensor;
-     
-      sensor_msgs::msg::PointCloud2 msg_out;
-      pcl_ros::transformPointCloud (T_map2sensor, *msg_pcd, msg_out);
-   
-      msg_out.header.frame_id = odom_frame;
-      pub_pcd->publish(msg_out);
+      manual_sync->push_t2(msg_pcd, pcd_stamp.seconds());
+      //RCLCPP_INFO(this->get_logger(), "pushed");
+      process(pcd_stamp.seconds());  
+      //RCLCPP_INFO(this->get_logger(), "processed");
     }
   
   public:
@@ -192,6 +216,21 @@ class TransformerNode  : public rclcpp::Node
 
       target_frame = this->declare_parameter("target_frame", "target_frame");
       RCLCPP_INFO(this->get_logger(), "target_frame: %s", target_frame.c_str());
+
+      float sync_slack = this->declare_parameter("sync_slack", 0.1);
+      RCLCPP_INFO(this->get_logger(), "sync_slack: %f", sync_slack);
+
+      float sync_window = this->declare_parameter("sync_window", 1.0);
+      RCLCPP_INFO(this->get_logger(), "sync_window: %f", sync_window);
+
+
+      manual_sync = std::make_shared<ManualSync<
+          nav_msgs::msg::Odometry::SharedPtr,
+          sensor_msgs::msg::PointCloud2::SharedPtr>>(
+              ManualSync<
+          nav_msgs::msg::Odometry::SharedPtr,
+          sensor_msgs::msg::PointCloud2::SharedPtr>
+              (sync_slack, sync_window));
 
       T_link2sensor = get_T_matrix(link_frame, target_frame);
 
