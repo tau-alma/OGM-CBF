@@ -45,7 +45,7 @@ class ManualSync
       {
         double e = std::abs(it->stamp - stamp); 
         double best_e = std::abs(best_it->stamp - stamp);
-        if (best_e < e) best_it = it;
+        if (e < best_e) best_it = it;
         ++it;
       }
       return best_it;
@@ -83,15 +83,45 @@ class ManualSync
     void push_t1(const T1& v, double stamp)
     {
       prune(q1, stamp - window);
-      ManualSyncEntry e(v, stamp);
+      ManualSyncEntry<T1> e(v, stamp);
       q1.push_back(e);
     }
 
     void push_t2(const T2& v, double stamp)
     {
       prune(q2, stamp - window);
-      ManualSyncEntry e(v, stamp);
+      ManualSyncEntry<T2> e(v, stamp);
       q2.push_back(e);
+    }
+
+    std::pair<double, double> range_t1()
+    {
+      double left = -1, right = -1;    
+      if (q1.size() > 0)
+      {
+        left = q1.begin()->stamp;
+        right = q1.rbegin()->stamp;
+      }  
+      return std::make_pair(left, right);  
+    }
+
+    std::pair<double, double> range_t2()
+    {
+      double left = -1, right = -1;    
+      if (q2.size() > 0)
+      {
+        left = q2.begin()->stamp;
+        right = q2.rbegin()->stamp;
+      }  
+      return std::make_pair(left, right);  
+    }
+
+
+    std::pair<size_t, size_t> size()
+    {
+      size_t s1 = q1.size();  
+      size_t s2 = q2.size();
+      return std::make_pair(s1,s2);  
     }
 };
 

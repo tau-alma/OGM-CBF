@@ -33,7 +33,6 @@ class TransformerNode  : public rclcpp::Node
     std::string target_frame;
 
     Eigen::Matrix4f T_link2sensor = Eigen::Matrix4f::Identity();
-    Eigen::Matrix4f T_odom2link = Eigen::Matrix4f::Identity();
 
     Eigen::Matrix4f get_T_matrix(
       float x, float y, float z,
@@ -161,7 +160,7 @@ class TransformerNode  : public rclcpp::Node
 
     void process(double stamp)
     {
-      //RCLCPP_INFO(this->get_logger(), "processing");
+      //RCLCPP_INFO(this->get_logger(), "processing at %lf", stamp);
       auto pair = manual_sync->pop(stamp);
       //RCLCPP_INFO(this->get_logger(), "popped");
 
@@ -173,11 +172,22 @@ class TransformerNode  : public rclcpp::Node
         rclcpp::Time odom_stamp(msg_odom->header.stamp);
         rclcpp::Time pcd_stamp(msg_pcd->header.stamp);
 
-        RCLCPP_INFO(this->get_logger(), "sync odom-pcd at %lf--%lf",
+        RCLCPP_INFO(this->get_logger(), "sync odom-pcd at %lf--%lf (%lf)",
             odom_stamp.seconds(),
-            pcd_stamp.seconds());
+            pcd_stamp.seconds(),
+            odom_stamp.seconds() - pcd_stamp.seconds()
+	    );
         
-        T_odom2link = get_T_matrix(msg_odom);
+	Eigen::Matrix4f T_odom2link = get_T_matrix(msg_odom);
+ 
+	Eigen::Matrix4f T_map2sensor =  T_odom2link * T_link2sensor;
+	           
+	sensor_msgs::msg::PointCloud2 msg_out;
+	pcl_ros::transformPointCloud (T_map2sensor, *msg_pcd, msg_out);
+			     
+	msg_out.header.frame_id = odom_frame;
+	pub_pcd->publish(msg_out);
+
       }
     }
 
@@ -188,9 +198,17 @@ class TransformerNode  : public rclcpp::Node
       rclcpp::Time odom_stamp(msg_odom->header.stamp);
       //RCLCPP_INFO(this->get_logger(), "odom at %lf", odom_stamp.seconds());
       manual_sync->push_t1(msg_odom, odom_stamp.seconds());
-      //RCLCPP_INFO(this->get_logger(), "pushed");
+      
+      auto sz = manual_sync->size();
+      auto r1 = manual_sync->range_t1();
+      auto r2 = manual_sync->range_t2();
+      //RCLCPP_INFO(this->get_logger(), "pushed %ld:(%lf--%lf) %ld:(%lf--%lf)", sz.first, r1.first, r1.second, sz.second, r2.first, r2.second);
+      
       process(odom_stamp.seconds());  
-      //RCLCPP_INFO(this->get_logger(), "processed");
+      sz = manual_sync->size();
+      r1 = manual_sync->range_t1();
+      r2 = manual_sync->range_t2();
+      //RCLCPP_INFO(this->get_logger(), "processed %ld:(%lf--%lf) %ld:(%lf--%lf)", sz.first, r1.first, r1.second, sz.second, r2.first, r2.second);
     }
 
     void callback_pcd(
@@ -200,9 +218,16 @@ class TransformerNode  : public rclcpp::Node
       rclcpp::Time pcd_stamp(msg_pcd->header.stamp);
       //RCLCPP_INFO(this->get_logger(), "pcd at %lf", pcd_stamp.seconds());
       manual_sync->push_t2(msg_pcd, pcd_stamp.seconds());
-      //RCLCPP_INFO(this->get_logger(), "pushed");
+      auto sz = manual_sync->size();
+      auto r1 = manual_sync->range_t1();
+      auto r2 = manual_sync->range_t2();
+      //RCLCPP_INFO(this->get_logger(), "pushed %ld:(%lf--%lf) %ld:(%lf--%lf)", sz.first, r1.first, r1.second, sz.second, r2.first, r2.second);
+      
       process(pcd_stamp.seconds());  
-      //RCLCPP_INFO(this->get_logger(), "processed");
+      sz = manual_sync->size();
+      r1 = manual_sync->range_t1();
+      r2 = manual_sync->range_t2();
+      //RCLCPP_INFO(this->get_logger(), "processed %ld:(%lf--%lf) %ld:(%lf--%lf)", sz.first, r1.first, r1.second, sz.second, r2.first, r2.second);
     }
   
   public:
