@@ -18,7 +18,6 @@ find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
-find_package(gridmap REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(pcl_conversions REQUIRED)
@@ -34,24 +33,6 @@ install(DIRECTORY
     include/
     DESTINATION include
   )
-
-add_executable(ogm_laserscan src/laserscan_node.cpp)
-ament_target_dependencies(ogm_laserscan rclcpp std_msgs sensor_msgs nav_msgs gridmap OpenCV cv_bridge)
-target_include_directories(ogm_laserscan PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
-install(TARGETS
-ogm_laserscan
-    DESTINATION lib/${PROJECT_NAME})
-
-add_executable(ogm_pointcloud src/pointcloud_node.cpp)
-ament_target_dependencies(ogm_pointcloud rclcpp std_msgs sensor_msgs nav_msgs gridmap OpenCV cv_bridge)
-target_include_directories(ogm_pointcloud PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
-install(TARGETS
-ogm_pointcloud
-  DESTINATION lib/${PROJECT_NAME})
 
 add_executable(offset_odom src/main_offset_odom.cpp)
 target_include_directories(offset_odom PUBLIC
@@ -114,7 +95,7 @@ ament_target_dependencies(occgrid
 	std_msgs
 	std_srvs
 	sensor_msgs
-        nav_msgs
+  nav_msgs
 	pcl_ros
 	pcl_conversions
   OpenCV
