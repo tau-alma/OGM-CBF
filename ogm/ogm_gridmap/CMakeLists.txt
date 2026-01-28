@@ -105,6 +105,26 @@ install(TARGETS
 occgrid
   DESTINATION lib/${PROJECT_NAME})
 
+add_executable(elevgrid src/main_elevation_gridmap.cpp)
+target_include_directories(elevgrid PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+ament_target_dependencies(elevgrid
+	rclcpp
+	std_msgs
+	std_srvs
+	sensor_msgs
+  nav_msgs
+	pcl_ros
+	pcl_conversions
+  OpenCV
+  cv_bridge
+	)
+install(TARGETS
+elevgrid
+  DESTINATION lib/${PROJECT_NAME})
+
+
 ament_export_include_directories(include)
 
 ament_package()

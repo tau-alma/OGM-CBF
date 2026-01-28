@@ -39,8 +39,8 @@ def generate_launch_description():
                 {'offset_to_link' : False},
                 {'from_pose' : False},
                 {'from_params' : True},
-                {'fixed_offset_x' : 0.},
-                {'fixed_offset_y' : 0.},
+                {'fixed_offset_x' : -450.},
+                {'fixed_offset_y' : 200.},
                 ],
             ) 
 
