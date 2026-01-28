@@ -22,61 +22,6 @@ from time import time
 import sys
 from ogm_cbf_kinematic_sim.conf import controller_frequency, simulator_frequency
 
-def interpolate(sdf, x, y):
-    """
-    Interpolates the value from the SDF matrix at coordinates (x, y) using bilinear interpolation.
-
-    Parameters:
-    - sdf: 2D NumPy array representing the signed distance function.
-    - x: X-coordinate (float).
-    - y: Y-coordinate (float).
-
-    Returns:
-    - Interpolated value at (x, y).
-    """
-    height, width = sdf.shape
-
-    # Clamp coordinates to be within the valid range
-    if x < 0 or x > width - 1 or y < 0 or y > height - 1:
-        raise ValueError("Coordinates are outside the bounds of the SDF matrix.")
-
-    # Coordinates of the top-left corner
-    x0 = int(np.floor(x))
-    y0 = int(np.floor(y))
-    x1 = min(x0 + 1, width - 1)
-    y1 = min(y0 + 1, height - 1)
-
-    # Distances between the coordinates and the top-left corner
-    dx = x - x0
-    dy = y - y0
-
-    # Retrieve the values at the four surrounding pixels
-    Q11 = sdf[y0, x0]
-    Q21 = sdf[y0, x1]
-    Q12 = sdf[y1, x0]
-    Q22 = sdf[y1, x1]
-
-    # Perform bilinear interpolation
-    interpolated_value = (Q11 * (1 - dx) * (1 - dy) +
-                          Q21 * dx * (1 - dy) +
-                          Q12 * (1 - dx) * dy +
-                          Q22 * dx * dy)
-
-    return interpolated_value
-
-def sdf_world(sdf_array, x_world, y_world,
-              resolution=0.05, origin_x=0.0, origin_y=0.0):
-    img_height = sdf_array.shape[0]
-    px, py = world_to_pixel(
-        x_world, y_world,
-        resolution=resolution,
-        origin_x=origin_x,
-        origin_y=origin_y,
-        img_height=img_height,
-        continuous=True,          # <-- IMPORTANT
-    )
-    return interpolate(sdf_array, px, py)
-
 def bilinear(arr, x, y):
     H, W = arr.shape
     if x < 0 or x > W - 1 or y < 0 or y > H - 1:
@@ -150,7 +95,15 @@ class MobileRobot(Node):
         self.linear_velocity = self.angular_velocity = 0.0
         self.x_init = self.y_init = self.yaw_init = 0.0
         self.counter = 0.0
-        self.Uref = [0.0, 0.0]
+        
+
+        # Global map and dimensions (will be updated on map reception)
+        self.global_map = None
+        self.map = None
+        self.map_height = 146#None
+        self.map_width = 192#None
+        self.recieved_map = False
+
 
         # Do not preallocate arrays with fixed dimensions;
         # they will be allocated when the map is received.
@@ -161,8 +114,7 @@ class MobileRobot(Node):
         self.dsdf_y_normalized = None
         self.grad_sdf = None
         self.grad_sdf_normalized = None
-        self.ddsdf_xx = self.ddsdf_yy = self.ddsdf_xy = self.ddsdf_yx = 0.0
-
+        self.ddsdf_xx = self.ddsdf_yy = self.ddsdf_xy = self.ddsdf_yx = None
         self.fig, self.ax = plt.subplots(1, 1)
         self.Vx = self.Vy = self.Vz = 0.0
 
@@ -171,17 +123,6 @@ class MobileRobot(Node):
         self.time_map = 0.0
         self.cbf_array = [0.0]
         self.linear_velocity = self.angular_velocity = 0.0
-
-        self.prev_time = monotonic()
-        self.time_integrator = monotonic()
-        self.throttle = self.steer = self.carBrake = 0.0
-
-        # Global map and dimensions (will be updated on map reception)
-        self.global_map = None
-        self.map = None
-        self.map_height = 146#None
-        self.map_width = 192#None
-        self.recieved_map = False
 
         # Controller hyperparameters
         self.declare_parameter('C_alpha',     0.01 * 0.5)
@@ -205,8 +146,6 @@ class MobileRobot(Node):
 
         self.cbf_prev = 0.0
         self.time_cbf_prev = 0.0
-
-        self.sdf_calculated = False
         self.map_resolution = 0.05
         self.map_origin_x = 0.0
         self.map_origin_y = 0.0
@@ -215,6 +154,19 @@ class MobileRobot(Node):
 
 
     def sdf_at_world(self, x_world, y_world):
+
+        """
+        SDF value at continuous world pose (x_world,y_world) in meters.
+
+        Steps:
+            1) world (m) -> continuous pixel coords (px,py) via world_to_pixel(res, origin, img_height)
+            2) bilinear interpolate self.sdf in pixel space (self.sdf is in *pixels*)
+            3) convert to meters: multiply by map_resolution [m/pixel]
+
+        Returns:
+            sdf_m : float, signed distance in [m] (positive=free, negative=inside obstacle depending on construction).
+        """
+
         img_height = self.sdf.shape[0]
         px, py = world_to_pixel(
             x_world, y_world,
@@ -224,9 +176,24 @@ class MobileRobot(Node):
             img_height=img_height,
             continuous=True,
         )
-        return bilinear(self.sdf, px, py)
+        return bilinear(self.sdf, px, py) * self.map_resolution
 
     def sdf_grad_at_world(self, x_world, y_world):
+
+        """
+        SDF gradient at continuous world pose (x_world,y_world).
+
+        Notes:
+        - self.dsdf_x, self.dsdf_y are computed by np.gradient(self.sdf) => derivatives in pixel units:
+            dsdf_x ~ ∂(sdf_pixels)/∂px   , dsdf_y ~ ∂(sdf_pixels)/∂py
+        - (coords+values both scaled), the numeric first-derivative is unchanged:
+            ∂(sdf_m)/∂(x_m) == ∂(sdf_px)/∂(px)   (same numbers)
+        - returning bilinear(dsdf_*) directly gives gradient in [m/m] (dimensionless slope) w.r.t world axes.
+
+        Returns:
+        (gx, gy): floats ~ (∂sdf/∂x_world, ∂sdf/∂y_world), units [m/m].
+        """
+
         img_height = self.sdf.shape[0]
         px, py = world_to_pixel(
             x_world, y_world,
@@ -236,16 +203,31 @@ class MobileRobot(Node):
             img_height=img_height,
             continuous=True,
         )
-        gx = bilinear(self.dsdf_x_world, px, py)
-        gy = bilinear(self.dsdf_y_world, px, py)
+        gx = bilinear(self.dsdf_x, px, py)
+        gy = bilinear(self.dsdf_y, px, py)
         return gx, gy
     
     def hessian_at_world(self, x_world, y_world, normalized=False):
+
         """
-        Returns continuous Hessian entries (dxx, dxy, dyx, dyy)
-        at world coordinates (x_world, y_world).
-        All in [1/m²].
+        Hessian of SDF at continuous world pose (x_world,y_world).
+
+        What it returns:
+        (dxx, dxy, dyx, dyy) where
+            dxx = ∂²sdf/∂x², dxy = ∂²sdf/∂x∂y, dyx = ∂²sdf/∂y∂x, dyy = ∂²sdf/∂y²
+
+        Scaling:
+        - Second derivatives scale with 1/length².
+        - stored second-derivative arrays are in pixel space (from np.gradient on pixel gradients),
+        it is converted here to world by dividing by map_resolution [m/pixel] once per “extra” derivative order.
+            (`/ self.map_resolution`.)
+
+        normalized=True uses Hessian of normalized gradient field (curvature-ish direction field), not raw SDF.
         """
+
+        # Chain rule: since (px,py)=world_to_pixel(x_world,y_world,res) and sdf_world = sdf_px*map_resolution,
+        # ∂/∂x_world = (1/map_resolution)∂/∂px so ∂sdf_world/∂x_world = ∂sdf_px/∂px, and ∂²sdf_world/∂x_world² = (1/map_resolution)∂²sdf_px/∂px².
+
         H = self.sdf.shape[0]
 
         px, py = world_to_pixel(
@@ -257,18 +239,18 @@ class MobileRobot(Node):
             continuous=True,        # <-- IMPORTANT: keep fractional pixels
         )
 
-        dxx = interpolate(self.ddsdf_xx, px, py)
-        dxy = interpolate(self.ddsdf_xy, px, py)
-        dyx = interpolate(self.ddsdf_yx, px, py)
-        dyy = interpolate(self.ddsdf_yy, px, py)
+        dxx = bilinear(self.ddsdf_xx, px, py)
+        dxy = bilinear(self.ddsdf_xy, px, py)
+        dyx = bilinear(self.ddsdf_yx, px, py)
+        dyy = bilinear(self.ddsdf_yy, px, py)
         if normalized:
-            dxx = interpolate(self.ddsdf_xx_normalized, px, py)
-            dxy = interpolate(self.ddsdf_xy_normalized, px, py)
-            dyx = interpolate(self.ddsdf_yx_normalized, px, py)
-            dyy = interpolate(self.ddsdf_yy_normalized, px, py)
+            dxx = bilinear(self.ddsdf_xx_normalized, px, py)
+            dxy = bilinear(self.ddsdf_xy_normalized, px, py)
+            dyx = bilinear(self.ddsdf_yx_normalized, px, py)
+            dyy = bilinear(self.ddsdf_yy_normalized, px, py)
 
 
-        return dxx, dxy, dyx, dyy
+        return dxx/self.map_resolution, dxy/self.map_resolution, dyx/self.map_resolution, dyy/self.map_resolution
 
         
 
@@ -360,7 +342,6 @@ class MobileRobot(Node):
             # (Optionally) store a copy of the global map
             self.global_map = map_img.copy()
 
-            sdf_a = 3#0.8#self.get_parameter('sdf_a').value
 
             # Create the signed distance function (phi_s)
             map_not = 255 - map_img
@@ -368,18 +349,13 @@ class MobileRobot(Node):
             map_not = np.uint8(map_not)
             phi_safe = cv2.distanceTransform(map_img, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1)
             phi_safe = phi_safe - 1.0
-            #phi_s_safe = sdf_a * np.tanh( 0.001*phi_safe )
             phi_s_safe = phi_safe
             
             phi_unsafe = cv2.distanceTransform(map_not, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1)
-            #phi_unsafe = np.where(phi_unsafe != 1.0, phi_unsafe, 0.0)
-            #phi_s_unsafe = -sdf_a * np.tanh( 0.001*phi_unsafe)
             phi_s_unsafe = -phi_unsafe
 
             phi_s = phi_s_unsafe + phi_s_safe
             self.sdf = phi_s.astype(np.float32)
-
-            #self.sdf = np.where(self.sdf != -1.0, self.sdf, 0.0)
 
             # Compute the gradients
             edges_y, edges_x = np.gradient(self.sdf)
@@ -387,21 +363,17 @@ class MobileRobot(Node):
             self.dsdf_y = -edges_y  # adjust for Cartesian coordinates
 
             # Second derivatives in pixel space
-            gyy, gyx = np.gradient(edges_y)  # gyy = d²φ/dpy², gyx = d²φ/(dpx dpy)
-            gxy, gxx = np.gradient(edges_x)  # gxy = d²φ/(dpy dpx), gxx = d²φ/dpx²
+            gyy, gyx = np.gradient(edges_y)  
+            gxy, gxx = np.gradient(edges_x) 
 
 
             res = self.map_resolution
-            self.ddsdf_xx = gxx / (res ** 2)         # ∂²φ / ∂x²
-            self.ddsdf_yy = gyy / (res ** 2)         # ∂²φ / ∂y² (with sign from y mapping)
-            self.ddsdf_xy = -gxy / (res ** 2)        # ∂²φ / ∂x∂y
-            self.ddsdf_yx = -gyx / (res ** 2)        # ∂²φ / ∂y∂x
+            self.ddsdf_xx = gxx
+            self.ddsdf_yy = gyy 
+            self.ddsdf_xy = -gxy 
+            self.ddsdf_yx = -gyx
 
-            # ---- NEW: gradient in WORLD coordinates [1/m] ----
-            res = self.map_resolution
-            self.dsdf_x_world = self.dsdf_x / res          # ∂φ / ∂x_world
-            self.dsdf_y_world = self.dsdf_y / res          # ∂φ / ∂y_world
-            # --------------------------------------------------
+           # --------------------------------------------------
 
             # Normalize the gradient vectors
             norm_grad = np.sqrt(self.dsdf_x**2 + self.dsdf_y**2)
@@ -415,10 +387,10 @@ class MobileRobot(Node):
             gyy_norm, gyx_norm = np.gradient(-self.dsdf_y_normalized)
             gxy_norm, gxx_norm = np.gradient(self.dsdf_x_normalized)
 
-            self.ddsdf_xx_normalized = gxx_norm / (res ** 2)         # ∂²(∂φ/∂x_normalized) / ∂x²
-            self.ddsdf_yy_normalized = gyy_norm / (res ** 2)         # ∂²(∂φ/∂y_normalized) / ∂y²
-            self.ddsdf_xy_normalized = -gxy_norm / (res ** 2)        # ∂²(∂φ/∂x_normalized) / ∂x∂y
-            self.ddsdf_yx_normalized = -gyx_norm / (res ** 2)        # ∂²(∂φ/∂y_normalized) / ∂y∂x
+            self.ddsdf_xx_normalized = gxx_norm 
+            self.ddsdf_yy_normalized = gyy_norm 
+            self.ddsdf_xy_normalized = -gxy_norm 
+            self.ddsdf_yx_normalized = -gyx_norm 
 
 
 
@@ -436,7 +408,7 @@ class MobileRobot(Node):
                 msg.pose.pose.orientation.y,
                 msg.pose.pose.orientation.z,
                 msg.pose.pose.orientation.w))
-            self.x_init, self.y_init = world_to_pixel(self.x_init_real, self.y_init_real, img_height=self.map_height)
+            
         self.counter += 1
 
         self.x_real = msg.pose.pose.position.x
@@ -450,26 +422,13 @@ class MobileRobot(Node):
         self.Vy = msg.twist.twist.linear.y
         self.Vz = msg.twist.twist.linear.z
 
-        # Convert real-world pose to pixel coordinates using the map dimensions
         if self.sdf is not None:
-            self.x, self.y = world_to_pixel(self.x_real, self.y_real, img_height=self.map_height)
             #t_1 = time()
             self.controller()
             #t_2 = time()
-
             #print(f"---------------------------------Controller computation time: {t_2 - t_1:.6f} seconds")
             self.publish_cbf()
             #self.publish_plot_twist()
-
-    def pose_to_pixel(self, x_real, y_real, resolution=0.05, map_origin=[0.0, 0.0]):
-        """
-        Convert real-world (meters) coordinates to pixel indices.
-        If the map dimensions are not available yet, default to 400.
-        """
-        img_height = self.map_height if self.map_height is not None else 400
-        pixel_x = (x_real - map_origin[0]) / resolution
-        pixel_y = img_height - ((y_real - map_origin[1]) / resolution)
-        return pixel_x, pixel_y
 
     def publish_cbf(self):
         """
@@ -495,7 +454,7 @@ class MobileRobot(Node):
         """
         global vel_prev, dPsi_prev
         # Hyperparameters and reference values
-        C_alpha = 0.9#5#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
+        C_alpha = 0.3#5#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
         P_alpha = 1.0
         Kv = 1.0
         Kw = 0.01
@@ -507,11 +466,7 @@ class MobileRobot(Node):
         Wmax = 0.25 * np.pi#self.get_parameter('Wmax').value #4 * np.pi
         Wmin = -0.25* np.pi#self.get_parameter('Wmin').value #-4 * np.pi
 
-        #if self.cbf_prev < 0.25:
-        #    Wmax = 2.25 * np.pi#self.get_parameter('Wmax').value #4 * np.pi
-        #    Wmin = -2.25* np.pi#self.get_parameter('Wmin').value #-4 * np.pi
-
-
+        
         
         Delta_ub = 1.0#0.5#self.get_parameter('Delta_ub').value #0.5
         Delta_lb = -1.0#-0.5#self.get_parameter('Delta_lb').value #-0.5
@@ -531,8 +486,8 @@ class MobileRobot(Node):
 
 
         yaw = self.yaw
-        l_a = 2.25#0.025#0.1
-        l_b = 2.25
+        l_a = 0.25#0.025#0.1
+        l_b = 0.25
         l_s = -np.sqrt(l_a**2 + l_b**2) #-l_a -(l_a*beta)# * (2*np.pi*beta + 1)
         
         eta = 0.0
