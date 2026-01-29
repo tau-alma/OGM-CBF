@@ -35,7 +35,7 @@ class Scan2PcdNode  : public rclcpp::Node
       ref_pt.intensity = 0.;
       pcd.push_back(ref_pt);
 
-      for (int i = 0; i < msg_scan->ranges.size() ; i++)
+      for (uint32_t i = 0; i < msg_scan->ranges.size() ; i++)
       {
           double ang = msg_scan->angle_min + i * msg_scan->angle_increment;
           if (msg_scan->ranges.at(i) != NAN)

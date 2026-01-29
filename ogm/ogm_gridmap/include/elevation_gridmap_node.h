@@ -138,17 +138,25 @@ class ElevationGridmapNode  : public rclcpp::Node
       if (do_pub_occimg) publish_occimg(ts);
     }
 
-    bool callback_on(
+    void callback_on(
 		    const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
 		    const std::shared_ptr<std_srvs::srv::Trigger::Response> res)
     {
-	    do_update = true;
+      if (req != nullptr) // handle unused warning
+      {
+	      do_update = true;
+        res->success = true;
+      }
     }
-    bool callback_off(
+    void callback_off(
 		    const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
 		    const std::shared_ptr<std_srvs::srv::Trigger::Response> res)
     {
-	    do_update = false;
+      if (req != nullptr) // handle unused warning
+      {
+	      do_update = false;
+        res->success = true;
+      }
     }
 
     void callback_pc2(const sensor_msgs::msg::PointCloud2::SharedPtr msgp)

@@ -115,9 +115,9 @@ class ElevationGridmap
     {
       bool in_bounds = true;
       in_bounds &= 0 < i; 
-      in_bounds &= i < width; 
+      in_bounds &= i < (int64_t)width; 
       in_bounds &= 0 < j; 
-      in_bounds &= j < height;
+      in_bounds &= j < (int64_t)height;
       return in_bounds; 
     }
 
@@ -163,9 +163,9 @@ class ElevationGridmap
         if (is_in_bounds(i, j) && !is_in_clearance(pt)) gridmap(i ,j).update(z); 
       }
 
-      for (int i = 0; i < width; ++i)
+      for (uint32_t i = 0; i < width; ++i)
       {
-        for (int j = 0; j < height; ++j)
+        for (uint32_t j = 0; j < height; ++j)
         {
           if (gridmap(i, j).type != KalmanCellOccupancy::UNKNOWN)
           {
@@ -192,9 +192,9 @@ class ElevationGridmap
     {
       pcl::PointCloud<pcl::PointXYZI> xyz;
 
-      for (int i = 0; i < width; ++i)
+      for (uint32_t i = 0; i < width; ++i)
       {
-        for (int j = 0; j < height; ++j)
+        for (uint32_t j = 0; j < height; ++j)
         {
           if (gridmap(i, j).type != KalmanCellOccupancy::UNKNOWN)
           {
@@ -225,9 +225,9 @@ class ElevationGridmap
     {
       std::vector<int8_t> ret;
 
-      for (int j = 0; j < height; ++j)
+      for (uint32_t j = 0; j < height; ++j)
       {
-        for (int i = 0; i < width; ++i)
+        for (uint32_t i = 0; i < width; ++i)
         {
           int8_t val = std::floor(gridmap(i,j).p_obs*127);
           ret.push_back(val);
@@ -240,9 +240,9 @@ class ElevationGridmap
     {
       std::vector<uint8_t> ret;
 
-      for (int j = 0; j < height; ++j)
+      for (uint32_t j = 0; j < height; ++j)
       {
-        for (int i = 0; i < width; ++i)
+        for (uint32_t i = 0; i < width; ++i)
         {
           uint8_t val = std::floor(gridmap(i,j).p_obs*255);
           ret.push_back(val);

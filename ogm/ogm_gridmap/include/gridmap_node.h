@@ -76,7 +76,7 @@ class GridmapNode  : public rclcpp::Node
       std::vector<uint8_t> data = gridmap->report_uint8();
       auto wall_fetch = std::chrono::high_resolution_clock::now();
       RCLCPP_DEBUG(this->get_logger(), "wall-img fetch: %lf ms",
-		      std::chrono::duration<double, std::milli>(wall_fetch - wall_start));
+		      std::chrono::duration<double, std::milli>(wall_fetch - wall_start).count());
       
       
       cv::Mat map(
@@ -90,26 +90,26 @@ class GridmapNode  : public rclcpp::Node
 
       auto wall_build = std::chrono::high_resolution_clock::now();
       RCLCPP_DEBUG(this->get_logger(), "wall-img build: %lf ms",
-		      std::chrono::duration<double, std::milli>(wall_build - wall_fetch));
+		      std::chrono::duration<double, std::milli>(wall_build - wall_fetch).count());
 
       cv_bridge::CvImage cv_bridge_image;
       cv_bridge_image.encoding = sensor_msgs::image_encodings::MONO8;
       cv_bridge_image.image = img;
       auto wall_bridge = std::chrono::high_resolution_clock::now();
       RCLCPP_DEBUG(this->get_logger(), "wall-img bridge: %lf ms",
-		      std::chrono::duration<double, std::milli>(wall_bridge - wall_build));
+		      std::chrono::duration<double, std::milli>(wall_bridge - wall_build).count());
 
       sensor_msgs::msg::Image msg_img = *(cv_bridge_image.toImageMsg());
 	    msg_img.header.stamp = now;
 	    msg_img.header.frame_id = this->map_frame;
       auto wall_msg = std::chrono::high_resolution_clock::now();
       RCLCPP_DEBUG(this->get_logger(), "wall-img msg: %lf ms",
-		      std::chrono::duration<double, std::milli>(wall_msg - wall_bridge));
+		      std::chrono::duration<double, std::milli>(wall_msg - wall_bridge).count());
 
       pub_img->publish(msg_img);
       auto wall_pub = std::chrono::high_resolution_clock::now();
       RCLCPP_DEBUG(this->get_logger(), "wall-img pub: %lf ms",
-		      std::chrono::duration<double, std::milli>(wall_pub - wall_msg));
+		      std::chrono::duration<double, std::milli>(wall_pub - wall_msg).count());
 
     }
 
@@ -130,12 +130,12 @@ class GridmapNode  : public rclcpp::Node
       
       auto wall_conv = std::chrono::high_resolution_clock::now();
       RCLCPP_DEBUG(this->get_logger(), "wall conversions: %lf ms",
-		      std::chrono::duration<double, std::milli>(wall_conv - wall_start));
+		      std::chrono::duration<double, std::milli>(wall_conv - wall_start).count());
 
       if (do_update) gridmap->update(*sensor_model, pcd);
       auto wall_update = std::chrono::high_resolution_clock::now();
       RCLCPP_DEBUG(this->get_logger(), "wall update: %lf ms",
-		      std::chrono::duration<double, std::milli>(wall_update - wall_conv));
+		      std::chrono::duration<double, std::milli>(wall_update - wall_conv).count());
     }
 
 
@@ -147,17 +147,25 @@ class GridmapNode  : public rclcpp::Node
       if (do_pub_img) publish_image(ts);
     }
 
-    bool callback_on(
+    void callback_on(
 		    const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
 		    const std::shared_ptr<std_srvs::srv::Trigger::Response> res)
     {
-	do_update = true;
+      if (req != nullptr) // handle unused warning
+      {
+	      do_update = true;
+        res->success = true;
+      }
     }
-    bool callback_off(
+    void callback_off(
 		    const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
 		    const std::shared_ptr<std_srvs::srv::Trigger::Response> res)
     {
-	do_update = false;
+      if (req != nullptr) // handle unused warning
+      {
+	      do_update = false;
+        res->success = true;
+      }
     }
 
 

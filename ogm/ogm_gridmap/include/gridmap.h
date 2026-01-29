@@ -34,7 +34,7 @@ class Gridmap
 
     bool is_in_map(int i, int j)
     {
-      if (i >= 0 && i < h && j >= 0 && j < w)
+      if (i >= 0 && i < (int64_t)h && j >= 0 && j < (int64_t)w)
         return true;
       return false;
     }
@@ -211,9 +211,9 @@ class Gridmap
         }
       }
       
-      for (int i = 0; i < h; ++i)
+      for (uint32_t i = 0; i < h; ++i)
       {
-        for (int j = 0; j < w; ++j)
+        for (uint32_t j = 0; j < w; ++j)
         {
           if (flags(i,j) == Gridmap::FLAG_UPDATE_OCC)
 	  {
@@ -256,9 +256,9 @@ class Gridmap
     std::vector<int8_t> report_int8()
     {
       std::vector<int8_t> ret;
-      for (int i = 0; i < h; ++i)
+      for (uint32_t i = 0; i < h; ++i)
       {
-        for (int j = 0; j < w; ++j)
+        for (uint32_t j = 0; j < w; ++j)
         {
           int8_t val = std::floor(map(i,j)*127);
           ret.push_back(val);
@@ -271,9 +271,9 @@ class Gridmap
     std::vector<uint8_t> report_uint8()
     {
       std::vector<uint8_t> ret;
-      for (int i = 0; i < h; ++i)
+      for (uint32_t i = 0; i < h; ++i)
       {
-        for (int j = 0; j < w; ++j)
+        for (uint32_t j = 0; j < w; ++j)
         {
           uint8_t val = std::floor(map(i,j)*255);
           ret.push_back(val);
