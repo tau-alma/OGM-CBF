@@ -188,7 +188,7 @@ class ElevationGridmap
     }
 
 
-    pcl::PointCloud<pcl::PointXYZI> report_3d()
+    pcl::PointCloud<pcl::PointXYZI> report_3d(int _ground_nbh_size)
     {
       pcl::PointCloud<pcl::PointXYZI> xyz;
 
@@ -203,8 +203,8 @@ class ElevationGridmap
             p_obs = gridmap(i, j).p_obs;
             std::tie(x, y) = sub2coord(i, j);
             //
-            vis_ground = z;
-            for (std::pair<int,int> c : nbh(i,j,1))
+            vis_ground = z - cellsize / 2;
+            for (std::pair<int,int> c : nbh(i,j,_ground_nbh_size))
               if (gridmap(c.first, c.second).z < vis_ground)
                 vis_ground = gridmap(c.first, c.second).z;
             //
@@ -230,6 +230,21 @@ class ElevationGridmap
         for (int i = 0; i < width; ++i)
         {
           int8_t val = std::floor(gridmap(i,j).p_obs*127);
+          ret.push_back(val);
+        }
+      }
+      return ret;
+    }
+
+    std::vector<uint8_t> report_2d_uint8()
+    {
+      std::vector<uint8_t> ret;
+
+      for (int j = 0; j < height; ++j)
+      {
+        for (int i = 0; i < width; ++i)
+        {
+          uint8_t val = std::floor(gridmap(i,j).p_obs*255);
           ret.push_back(val);
         }
       }

@@ -58,11 +58,16 @@ def generate_launch_description():
                 ],
             parameters=[
                 {"use_sim_time" : LaunchConfiguration('use_sim_time')},
+                {"map_frame" : 'map'},
+                {"do_pub_occgrid" : True},
+                {"do_pub_occimg" : True},
+                {"occgrid_vis_z" : -20.0},
+                {"do_pub_elevgrid_real" : False},
+                {"do_pub_elevgrid_vis" : False},
                 {"cellsize" : .25},
                 {"height" : 250.},
                 {"width" : 180.},
                 {"clearance_thr" : -1.0},
-                {"vis_z" : -20.0},
                 {"traversable_slope" : 0.78},
                 ],
         )
