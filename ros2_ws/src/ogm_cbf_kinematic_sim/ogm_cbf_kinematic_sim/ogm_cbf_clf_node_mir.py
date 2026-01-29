@@ -95,6 +95,9 @@ class MobileRobot(Node):
         self.linear_velocity = self.angular_velocity = 0.0
         self.x_init = self.y_init = self.yaw_init = 0.0
         self.counter = 0.0
+
+        self.prev_odom_t_ns = None
+        self.dt = 1.0 / controller_frequency  # fallback
         
 
         # Global map and dimensions (will be updated on map reception)
@@ -347,11 +350,11 @@ class MobileRobot(Node):
             map_not = 255 - map_img
             map_img = np.uint8(map_img)
             map_not = np.uint8(map_not)
-            phi_safe = cv2.distanceTransform(map_img, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1)
+            phi_safe = cv2.distanceTransform(map_img, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_32F)
             phi_safe = phi_safe - 1.0
             phi_s_safe = phi_safe
             
-            phi_unsafe = cv2.distanceTransform(map_not, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_8UC1)
+            phi_unsafe = cv2.distanceTransform(map_not, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_32F)
             phi_s_unsafe = -phi_unsafe
 
             phi_s = phi_s_unsafe + phi_s_safe
@@ -398,6 +401,14 @@ class MobileRobot(Node):
         """
         Receive the vehicle's odometry and update the state.
         """
+        t_ns = Time.from_msg(msg.header.stamp).nanoseconds
+        if self.prev_odom_t_ns is None:
+            self.dt = 1.0 / controller_frequency
+        else:
+            self.dt = max((t_ns - self.prev_odom_t_ns) * 1e-9, 1e-6)  # seconds, clamp
+        self.prev_odom_t_ns = t_ns
+
+
         global vel_prev, dPsi_prev
         # Initialize the pixel pose based on the first odometry message
         if self.counter == 0:
@@ -501,17 +512,45 @@ class MobileRobot(Node):
         x = np.array([np.cos(yaw), np.sin(yaw)])
         x_perp = np.array([-np.sin(yaw), np.cos(yaw)])
 
-        cbf = sdf + l_s + l_a*(g @ x) + l_b*(g @ x_perp)
+        # --- with perpendicular term---
 
-        # Hessian columns (world)
-        g_x = np.array([ddsdf_xx, ddsdf_yx])   # ∂g/∂x
-        g_y = np.array([ddsdf_xy, ddsdf_yy])   # ∂g/∂y
+        # cbf = sdf + l_s + l_a*(g @ x) + l_b*(g @ x_perp)
 
-        dcbf_x = dsdf_x_true + l_a*(g_x @ x) + l_b*(g_x @ x_perp)
-        dcbf_y = dsdf_y_true + l_a*(g_y @ x) + l_b*(g_y @ x_perp)
-        dcbf_yaw = l_a*(g @ x_perp) - l_b*(g @ x)
+        # # Hessian columns (world)
+        # g_x = np.array([ddsdf_xx, ddsdf_yx])   # ∂g/∂x
+        # g_y = np.array([ddsdf_xy, ddsdf_yy])   # ∂g/∂y
 
-        delta_time = 1/controller_frequency
+        # dcbf_x = dsdf_x_true + l_a*(g_x @ x) + l_b*(g_x @ x_perp)
+        # dcbf_y = dsdf_y_true + l_a*(g_y @ x) + l_b*(g_y @ x_perp)
+        # dcbf_yaw = l_a*(g @ x_perp) - l_b*(g @ x)
+        # ----------------------------
+
+        # --- symmetric (no left/right bias), smooth -------------------
+        eps_abs = 1e-4  # >0 keeps differentiable at z=0
+
+        z = float(g @ x_perp)                    # lateral alignment (signed)
+        absz = math.sqrt(z*z + eps_abs)          # smooth |z|
+        chain = z / absz                         # d(absz)/dz in (-1,1), well-defined
+
+        cbf = sdf + l_s + l_a*float(g @ x) + l_b*absz
+
+        # Hessian columns (world): g_x = ∂g/∂x, g_y = ∂g/∂y
+        g_x = np.array([ddsdf_xx, ddsdf_yx])
+        g_y = np.array([ddsdf_xy, ddsdf_yy])
+
+        # z_x = ∂(g·x_perp)/∂x = (∂g/∂x)·x_perp   (x_perp independent of x,y)
+        z_x = float(g_x @ x_perp)
+        z_y = float(g_y @ x_perp)
+
+        # yaw: ∂(g·x)/∂yaw = g·x_perp,  ∂(g·x_perp)/∂yaw = -g·x
+        dcbf_x   = dsdf_x_true + l_a*float(g_x @ x) + l_b*chain*z_x
+        dcbf_y   = dsdf_y_true + l_a*float(g_y @ x) + l_b*chain*z_y
+        dcbf_yaw = l_a*float(g @ x_perp) - l_b*chain*float(g @ x)
+        # ---------------------------------------------------------------
+
+
+        #delta_time = 1/controller_frequency
+        delta_time = self.dt
         true_cbf_dot = (cbf - self.cbf_prev)/ delta_time
 
 
