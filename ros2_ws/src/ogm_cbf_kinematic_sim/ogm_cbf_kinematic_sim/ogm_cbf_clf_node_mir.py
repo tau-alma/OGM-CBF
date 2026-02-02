@@ -88,7 +88,7 @@ class MobileRobot(Node):
         self.bridge = CvBridge()
         self.publisher_cbf_ = self.create_publisher(Float64MultiArray, '/cbf_array', 1)
         self.publisher_plot_twist_ = self.create_publisher(TwistStamped, '/plot_vel', 1)
-        self.twist_publisher_ = self.create_publisher(Twist, 'cmd_vel_3', 1)
+        self.twist_publisher_ = self.create_publisher(Twist, 'cmd_vel_2', 1)
 
         vel_pub_time = 1.0 / controller_frequency
         self.twist_timer = self.create_timer(vel_pub_time, self.publish_velocity)
@@ -519,7 +519,7 @@ class MobileRobot(Node):
 
 
         yaw = self.yaw
-        l_a = 2.25#0.025#0.1
+        l_a = 0.25#0.025#0.1 (lower, omega has to turn more and be more agressive)
         l_b = 0.0#2.25
         l_s = -np.sqrt(l_a**2 + l_b**2) #-l_a -(l_a*beta)# * (2*np.pi*beta + 1)
         
@@ -532,7 +532,9 @@ class MobileRobot(Node):
         
         g = np.array([dsdf_x_true, dsdf_y_true])   # raw, world
         x = np.array([np.cos(yaw), np.sin(yaw)])
+        x = np.around(x, decimals=2)
         x_perp = np.array([-np.sin(yaw), np.cos(yaw)])
+        x_perp = np.around(x_perp, decimals=2)
 
         print(
             f"x vector: {np.array2string(x, precision=16, separator=', ')} "
