@@ -22,7 +22,7 @@ from time import time
 import sys
 from ogm_cbf_kinematic_sim.conf import controller_frequency, simulator_frequency
 
-def bilinear(arr, x, y):
+def bilinear(arr, x, y , debug=False):
     H, W = arr.shape
     if x < 0 or x > W - 1 or y < 0 or y > H - 1:
         # outside map, choose convention
@@ -41,12 +41,21 @@ def bilinear(arr, x, y):
     Q12 = arr[y1, x0]
     Q22 = arr[y1, x1]
 
-    return float(
+    val = float(
         Q11 * (1 - dx) * (1 - dy) +
         Q21 * dx       * (1 - dy) +
         Q12 * (1 - dx) * dy       +
         Q22 * dx       * dy
     )
+    if debug:
+        print(
+            "bilinear:",
+            f"x={x:.6f}, y={y:.6f}, x0={x0}, y0={y0}, x1={x1}, y1={y1}, "
+            f"dx={dx:.6f}, dy={dy:.6f}, "
+            f"Q11={float(Q11):.6f}, Q21={float(Q21):.6f}, "
+            f"Q12={float(Q12):.6f}, Q22={float(Q22):.6f}, val={val:.6f}"
+        )
+    return val
 
 
 matplotlib.use('Agg')
@@ -79,7 +88,7 @@ class MobileRobot(Node):
         self.bridge = CvBridge()
         self.publisher_cbf_ = self.create_publisher(Float64MultiArray, '/cbf_array', 1)
         self.publisher_plot_twist_ = self.create_publisher(TwistStamped, '/plot_vel', 1)
-        self.twist_publisher_ = self.create_publisher(Twist, 'cmd_vel_2', 1)
+        self.twist_publisher_ = self.create_publisher(Twist, 'cmd_vel_3', 1)
 
         vel_pub_time = 1.0 / controller_frequency
         self.twist_timer = self.create_timer(vel_pub_time, self.publish_velocity)
@@ -197,6 +206,8 @@ class MobileRobot(Node):
         (gx, gy): floats ~ (∂sdf/∂x_world, ∂sdf/∂y_world), units [m/m].
         """
 
+        
+
         img_height = self.sdf.shape[0]
         px, py = world_to_pixel(
             x_world, y_world,
@@ -206,8 +217,18 @@ class MobileRobot(Node):
             img_height=img_height,
             continuous=True,
         )
-        gx = bilinear(self.dsdf_x, px, py)
-        gy = bilinear(self.dsdf_y, px, py)
+
+        ix = int(np.floor(px))
+        iy = int(np.floor(py))
+        print(f"+++++++++++++++dsdfx is {self.dsdf_x[iy, ix]} dsdfy is {self.dsdf_y[iy, ix]}")
+
+
+        
+        gx = bilinear(self.dsdf_x, px, py, debug=True)
+        gy = bilinear(self.dsdf_y, px, py, debug=True)
+        vector_norm = math.sqrt(gx**2 + gy**2)
+        gx /= vector_norm + 1e-8
+        gy /= vector_norm + 1e-8
         return gx, gy
     
     def hessian_at_world(self, x_world, y_world, normalized=False):
@@ -275,7 +296,7 @@ class MobileRobot(Node):
         edges_y = self.dsdf_y
         im_height, im_width = self.sdf.shape  # use dynamic dimensions
         self.ax.clear()
-        dstep = max(1, im_width // 40)  # adjust the step size based on map width
+        dstep = max(1, im_width // 20)  # adjust the step size based on map width
         Y, X = np.mgrid[0:im_height:dstep, 0:im_width:dstep]
         self.ax.quiver(
             X, Y,
@@ -330,7 +351,8 @@ class MobileRobot(Node):
             # Binarize the map image
             _, map_img = cv2.threshold(map_img, 127, 255, cv2.THRESH_BINARY)
             map_img = np.asarray(map_img)
-            map_img = cv2.bitwise_not(map_img)  # Invert colors: obstacles=255, free=0
+            
+            #map_img = cv2.bitwise_not(map_img)  # Invert colors: obstacles=255, free=0
 
             k = 1
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2*k + 1, 2*k + 1))
@@ -465,7 +487,7 @@ class MobileRobot(Node):
         """
         global vel_prev, dPsi_prev
         # Hyperparameters and reference values
-        C_alpha = 0.3#5#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
+        C_alpha = 0.9#5#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
         P_alpha = 1.0
         Kv = 1.0
         Kw = 0.01
@@ -482,7 +504,7 @@ class MobileRobot(Node):
         Delta_ub = 1.0#0.5#self.get_parameter('Delta_ub').value #0.5
         Delta_lb = -1.0#-0.5#self.get_parameter('Delta_lb').value #-0.5
         #heading = normalize_angle(np.pi - np.pi/6)
-        heading = normalize_angle(1/4*np.pi)
+        heading = normalize_angle(np.pi)
 
         xw = self.x_real
         yw = self.y_real
@@ -497,8 +519,8 @@ class MobileRobot(Node):
 
 
         yaw = self.yaw
-        l_a = 0.25#0.025#0.1
-        l_b = 0.25
+        l_a = 2.25#0.025#0.1
+        l_b = 0.0#2.25
         l_s = -np.sqrt(l_a**2 + l_b**2) #-l_a -(l_a*beta)# * (2*np.pi*beta + 1)
         
         eta = 0.0
@@ -512,40 +534,51 @@ class MobileRobot(Node):
         x = np.array([np.cos(yaw), np.sin(yaw)])
         x_perp = np.array([-np.sin(yaw), np.cos(yaw)])
 
+        print(
+            f"x vector: {np.array2string(x, precision=16, separator=', ')} "
+            f"and sdf g: {np.array2string(g, precision=16, separator=', ')}"
+        )
+        print(f"g @ x: {float(g @ x):.16f}")
+
         # --- with perpendicular term---
 
-        # cbf = sdf + l_s + l_a*(g @ x) + l_b*(g @ x_perp)
+        cbf = sdf + l_s + l_a*(g @ x)# + l_b*(g @ x_perp)
 
-        # # Hessian columns (world)
-        # g_x = np.array([ddsdf_xx, ddsdf_yx])   # ∂g/∂x
-        # g_y = np.array([ddsdf_xy, ddsdf_yy])   # ∂g/∂y
+        # Hessian columns (world)
+        g_x = np.array([ddsdf_xx, ddsdf_yx])   # ∂g/∂x
+        g_y = np.array([ddsdf_xy, ddsdf_yy])   # ∂g/∂y
 
-        # dcbf_x = dsdf_x_true + l_a*(g_x @ x) + l_b*(g_x @ x_perp)
-        # dcbf_y = dsdf_y_true + l_a*(g_y @ x) + l_b*(g_y @ x_perp)
-        # dcbf_yaw = l_a*(g @ x_perp) - l_b*(g @ x)
+        dcbf_x = dsdf_x_true + l_a*(g_x @ x)# + l_b*(g_x @ x_perp)
+        dcbf_y = dsdf_y_true + l_a*(g_y @ x)# + l_b*(g_y @ x_perp)
+        dcbf_yaw = l_a*(g @ x_perp)# - l_b*(g @ x)
         # ----------------------------
 
         # --- symmetric (no left/right bias), smooth -------------------
-        eps_abs = 1e-4  # >0 keeps differentiable at z=0
+        # eps_abs = 1e-4  # >0 keeps differentiable at z=0
 
-        z = float(g @ x_perp)                    # lateral alignment (signed)
-        absz = math.sqrt(z*z + eps_abs)          # smooth |z|
-        chain = z / absz                         # d(absz)/dz in (-1,1), well-defined
+        # z = float(g @ x_perp)                    # lateral alignment (signed)
+        # absz = math.sqrt(z*z + eps_abs)          # smooth |z|
+        # chain = z / absz                         # d(absz)/dz in (-1,1), well-defined
 
-        cbf = sdf + l_s + l_a*float(g @ x) + l_b*absz
+        # cbf = sdf + l_s + l_a*float(g @ x) + l_b*absz
 
-        # Hessian columns (world): g_x = ∂g/∂x, g_y = ∂g/∂y
-        g_x = np.array([ddsdf_xx, ddsdf_yx])
-        g_y = np.array([ddsdf_xy, ddsdf_yy])
+        # # Hessian columns (world): g_x = ∂g/∂x, g_y = ∂g/∂y
+        # g_x = np.array([ddsdf_xx, ddsdf_yx])
+        # g_y = np.array([ddsdf_xy, ddsdf_yy])
 
-        # z_x = ∂(g·x_perp)/∂x = (∂g/∂x)·x_perp   (x_perp independent of x,y)
-        z_x = float(g_x @ x_perp)
-        z_y = float(g_y @ x_perp)
+        # # z_x = ∂(g·x_perp)/∂x = (∂g/∂x)·x_perp   (x_perp independent of x,y)
+        # z_x = float(g_x @ x_perp)
+        # z_y = float(g_y @ x_perp)
 
-        # yaw: ∂(g·x)/∂yaw = g·x_perp,  ∂(g·x_perp)/∂yaw = -g·x
-        dcbf_x   = dsdf_x_true + l_a*float(g_x @ x) + l_b*chain*z_x
-        dcbf_y   = dsdf_y_true + l_a*float(g_y @ x) + l_b*chain*z_y
-        dcbf_yaw = l_a*float(g @ x_perp) - l_b*chain*float(g @ x)
+        # # yaw: ∂(g·x)/∂yaw = g·x_perp,  ∂(g·x_perp)/∂yaw = -g·x
+        # dcbf_x   = dsdf_x_true + l_a*float(g_x @ x) + l_b*chain*z_x
+        # dcbf_y   = dsdf_y_true + l_a*float(g_y @ x) + l_b*chain*z_y
+        # dcbf_yaw = l_a*float(g @ x_perp) - l_b*chain*float(g @ x)
+
+        # print("---------------------------------------------------------------")
+        # print(f"dcbf_yaw: {dcbf_yaw:.2f}")
+        # print(f"(g @ x_perp): {float(g @ x_perp):.2f}")
+        # print(f"-chain*float(g @ x): {-chain*float(g @ x):.2f}")
         # ---------------------------------------------------------------
 
 
@@ -555,9 +588,9 @@ class MobileRobot(Node):
 
 
 
-        print(f"eta: {np.rad2deg(eta)}")
+        #print(f"eta: {np.rad2deg(eta)}")
 
-        print(f"dcbf_x: {dcbf_x:.2f}, dcbf_y: {dcbf_y:.2f}, dcbf_yaw: {dcbf_yaw:.2f}")
+        print(f"dcbf_x: {dcbf_x:.2f}, dcbf_y: {dcbf_y:.2f}, dcbf_yaw: {dcbf_yaw:.16f}")
        
 
         Vref = Vmax
@@ -608,10 +641,10 @@ class MobileRobot(Node):
 
             
             print(f"A (Av) is: {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw))):.2f}")
-            print(f"B (Bw) is: {dcbf_yaw:.2f}")
-            print(f"QP Solution: vel={vel:.2f}, omega={dPsi:.2f}")
+            print(f"B (Bw) is: {dcbf_yaw:.16f}")
+            print(f"QP Solution: vel={vel:.2f}, omega={dPsi:.16f}")
             print(f"Av is{((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel:.2f}")
-            print(f"Bw is {dcbf_yaw * dPsi:.2f}")
+            print(f"Bw is {dcbf_yaw * dPsi:.16f}")
             print(f"Av + Bw is {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel + dcbf_yaw * dPsi:.2f}")
             print(f"cbf: {cbf:.2f}, cbf_dot: {cbf_dot:.2f}, cbf_dot + alpha*cbf: {cbf_dot_alpha_cbf:.2f}")
             print(f"cbf_dot (true): {true_cbf_dot:.2f}, difference: {cbf_dot - true_cbf_dot:.2f}")

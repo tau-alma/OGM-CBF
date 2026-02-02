@@ -9,4 +9,4 @@ ros__parameters:
   Delta_ub:  0.5
   l_a:   0.25
   l_s:  -0.25
-  update_rate: 50.0
+  update_rate: 10.0

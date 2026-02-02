@@ -101,7 +101,7 @@ class StartPoseSelector(Node):
         h, w = img.shape
         default_x = 10.30#(w * resolution) / 2.0
         default_y = 9.0#(h * resolution) / 2.0
-        default_yaw_deg = 45.0#180.0
+        default_yaw_deg = 0.0#180.0
 
         # Internal state that the GUI modifies
         state = {

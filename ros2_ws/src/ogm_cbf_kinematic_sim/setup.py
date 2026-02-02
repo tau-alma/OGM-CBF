@@ -14,6 +14,9 @@ setup(
         ('share/' + package_name + '/launch', [
             'launch/bringup.launch.py',
         ]),
+        ('share/' + package_name + '/launch', [
+            'launch/afs_bringup.launch.py',
+        ]),
         # this installs hyperparams.yaml under share/<pkg>
         ('share/' + package_name, [
             'hyperparams.yaml',
@@ -34,6 +37,7 @@ setup(
             'wandb_logger_node = ogm_cbf_kinematic_sim.wandb_logger_node:main',
             'map_publisher_node = ogm_cbf_kinematic_sim.map.map_publisher_node:main',
             'start_pose_selector_node = ogm_cbf_kinematic_sim.start_pose_selector_node:main',
+            'kinematic_afs_sim_node = ogm_cbf_kinematic_sim.kinematic_afs_sim_node:main',
         ],
     },
 )
