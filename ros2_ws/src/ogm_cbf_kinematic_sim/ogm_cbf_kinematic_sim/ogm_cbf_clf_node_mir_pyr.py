@@ -78,6 +78,36 @@ def normalize_difference(angle):
         angle -= 2.0 * np.pi
     return angle
 
+def min_pool_2x2_free(free_u8):  # conservative: obstacles grow
+    H, W = free_u8.shape
+    Hp = H + (H % 2)
+    Wp = W + (W % 2)
+    pad = np.zeros((Hp, Wp), dtype=free_u8.dtype)  # pad as obstacle (0) => conservative
+    pad[:H, :W] = free_u8
+    blk = pad.reshape(Hp//2, 2, Wp//2, 2)
+    return blk.min(axis=(1,3)).astype(np.uint8)  # 255 only if all 4 free
+
+
+def gaussian_pyr_down(img_u8, K=4):
+    pyr = [img_u8]
+    x = img_u8
+    for _ in range(K-1):
+        x = cv2.pyrDown(x)     # Gaussian low-pass + /2
+        pyr.append(x)
+    return pyr
+
+def signed_sdf_and_grad_from_free(free_u8):
+    free = free_u8
+    obs  = 255 - free
+    phi_safe   = cv2.distanceTransform(free, cv2.DIST_L2, 3, dstType=cv2.CV_32F) - 1.0
+    phi_unsafe = cv2.distanceTransform(obs,  cv2.DIST_L2, 3, dstType=cv2.CV_32F)
+    sdf_px = (-phi_unsafe + phi_safe).astype(np.float32)  # signed distance in pixels
+
+    dy, dx = np.gradient(sdf_px)
+    dsdfx = dx.astype(np.float32)
+    dsdfy = (-dy).astype(np.float32)  # pixel->Cartesian
+    return sdf_px, dsdfx, dsdfy
+
 class MobileRobot(Node):
     def __init__(self, state=[0,0,0], timestep=0.1):
         super().__init__('minimal_publisher')
@@ -162,6 +192,19 @@ class MobileRobot(Node):
         self.map_origin_x = 0.0
         self.map_origin_y = 0.0
         self.map_erode = np.zeros((self.map_height, self.map_width), dtype=np.uint8)
+
+        self.pyr_levels = 5          # K
+        self.lookahead_L = 0.5       # meters
+        self.safe_margin_d0 = 0.2    # meters
+        self.sdf_levels = []         # list[np.ndarray float32]  (pixels)
+        self.dsdfx_levels = []       # list[np.ndarray float32]
+        self.dsdfy_levels = []
+        self.res_levels = []         # list[float] meters/pixel
+        self.ddsdf_xx_levels = []
+        self.ddsdf_xy_levels = []
+        self.ddsdf_yx_levels = []
+        self.ddsdf_yy_levels = []
+
 
 
 
@@ -345,79 +388,101 @@ class MobileRobot(Node):
         """
         When a map is received, use its dimensions to create the sdf and gradient arrays.
         """
-        if not self.recieved_map:
-            self.time_map = Time.from_msg(msg.header.stamp)
-            map_img = self.bridge.imgmsg_to_cv2(msg)
-            # Binarize the map image
-            _, map_img = cv2.threshold(map_img, 127, 255, cv2.THRESH_BINARY)
-            map_img = np.asarray(map_img)
+        #if not self.recieved_map:
+        self.time_map = Time.from_msg(msg.header.stamp)
+        map_img = self.bridge.imgmsg_to_cv2(msg)
+        # Binarize the map image
+        _, map_img = cv2.threshold(map_img, 127, 255, cv2.THRESH_BINARY)
+        map_img = np.asarray(map_img)
+
+        #map_img = cv2.bitwise_not(map_img)  # Invert colors: obstacles=255, free=0
+
+        K = self.pyr_levels
+        #free_k = map_img.copy()
+
+        free_pyr = gaussian_pyr_down(map_img, K=self.pyr_levels)
+
+        self.sdf_levels.clear()
+        self.dsdfx_levels.clear()
+        self.dsdfy_levels.clear()
+        self.res_levels.clear()
+
+        self.ddsdf_xx_levels.clear()
+        self.ddsdf_xy_levels.clear()
+        self.ddsdf_yx_levels.clear()
+        self.ddsdf_yy_levels.clear()
+
+
+        for k, img in enumerate(free_pyr):
+            # optional: extra conservative inflation per level (dilate obstacles == erode free)
+            # free_k = cv2.erode(free_k, kernel, iterations=infl_iters_k)
+
+            free_k = ((img > 127).astype(np.uint8) * 255)
+
+
+            sdf_px, dsdfx, dsdfy = signed_sdf_and_grad_from_free(free_k)
+
+            # Hessian in pixel space (same as your original file) :contentReference[oaicite:4]{index=4}
+            edges_y, edges_x = np.gradient(sdf_px)
+            gyy, gyx = np.gradient(edges_y)
+            gxy, gxx = np.gradient(edges_x)
+
+            ddsdf_xx = gxx
+            ddsdf_yy = gyy
+            ddsdf_xy = -gxy
+            ddsdf_yx = -gyx
+
+            self.ddsdf_xx_levels.append(ddsdf_xx.astype(np.float32))
+            self.ddsdf_xy_levels.append(ddsdf_xy.astype(np.float32))
+            self.ddsdf_yx_levels.append(ddsdf_yx.astype(np.float32))
+            self.ddsdf_yy_levels.append(ddsdf_yy.astype(np.float32))
+
+            self.sdf_levels.append(sdf_px)
+            self.dsdfx_levels.append(dsdfx)
+            self.dsdfy_levels.append(dsdfy)
+            self.res_levels.append(self.map_resolution * (2**k))
+            #free_k = min_pool_2x2_free(free_k)   # next level
             
-            #map_img = cv2.bitwise_not(map_img)  # Invert colors: obstacles=255, free=0
 
-            k = 1
-            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2*k + 1, 2*k + 1))
-            map_img = cv2.erode(map_img, kernel, iterations=1)
 
-            self.map_erode = map_img
+    def sdf_at_world_level(self, k, xw, yw):
+        sdf = self.sdf_levels[k]
+        res = self.res_levels[k]
+        H = sdf.shape[0]
+        px, py = world_to_pixel(xw, yw, resolution=res,
+                                origin_x=self.map_origin_x, origin_y=self.map_origin_y,
+                                img_height=H, continuous=True)
+        return bilinear(sdf, px, py) * res  # meters
+
+    def grad_at_world_level(self, k, xw, yw):
+        dsx = self.dsdfx_levels[k]
+        dsy = self.dsdfy_levels[k]
+        res = self.res_levels[k]
+        H = dsx.shape[0]
+        px, py = world_to_pixel(xw, yw, resolution=res,
+                                origin_x=self.map_origin_x, origin_y=self.map_origin_y,
+                                img_height=H, continuous=True)
+        gx = bilinear(dsx, px, py)
+        gy = bilinear(dsy, px, py)
+        return gx, gy  # ~ ∂φ/∂x, ∂φ/∂y (m/m)
+    
+
+    def hessian_at_world_level(self, k, xw, yw):
+        res = self.res_levels[k]
+        H = self.sdf_levels[k].shape[0]
+        px, py = world_to_pixel(xw, yw, resolution=res,
+                                origin_x=self.map_origin_x, origin_y=self.map_origin_y,
+                                img_height=H, continuous=True)
+
+        dxx = bilinear(self.ddsdf_xx_levels[k], px, py)
+        dxy = bilinear(self.ddsdf_xy_levels[k], px, py)
+        dyx = bilinear(self.ddsdf_yx_levels[k], px, py)
+        dyy = bilinear(self.ddsdf_yy_levels[k], px, py)
+        return dxx/res, dxy/res, dyx/res, dyy/res
+
+
+
             
-
-            self.map_height, self.map_width = map_img.shape
-            self.recieved_map = True
-
-            # (Optionally) store a copy of the global map
-            self.global_map = map_img.copy()
-
-
-            # Create the signed distance function (phi_s)
-            map_not = 255 - map_img
-            map_img = np.uint8(map_img)
-            map_not = np.uint8(map_not)
-            phi_safe = cv2.distanceTransform(map_img, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_32F)
-            phi_safe = phi_safe - 1.0
-            phi_s_safe = phi_safe
-            
-            phi_unsafe = cv2.distanceTransform(map_not, distanceType=cv2.DIST_L2, maskSize=3, dstType=cv2.CV_32F)
-            phi_s_unsafe = -phi_unsafe
-
-            phi_s = phi_s_unsafe + phi_s_safe
-            self.sdf = phi_s.astype(np.float32)
-
-            # Compute the gradients
-            edges_y, edges_x = np.gradient(self.sdf)
-            self.dsdf_x = edges_x
-            self.dsdf_y = -edges_y  # adjust for Cartesian coordinates
-
-            # Second derivatives in pixel space
-            gyy, gyx = np.gradient(edges_y)  
-            gxy, gxx = np.gradient(edges_x) 
-
-
-            res = self.map_resolution
-            self.ddsdf_xx = gxx
-            self.ddsdf_yy = gyy 
-            self.ddsdf_xy = -gxy 
-            self.ddsdf_yx = -gyx
-
-           # --------------------------------------------------
-
-            # Normalize the gradient vectors
-            norm_grad = np.sqrt(self.dsdf_x**2 + self.dsdf_y**2)
-            norm_grad[norm_grad == 0] = 1.0  # avoid division by zero
-            self.dsdf_x_normalized = self.dsdf_x / norm_grad
-            self.dsdf_y_normalized = self.dsdf_y / norm_grad
-            self.grad_sdf = np.array([self.dsdf_x, self.dsdf_y])
-            self.grad_sdf_normalized = np.array([self.dsdf_x_normalized, self.dsdf_y_normalized])
-            # Second derivatives will be computed at the robot's location later.
-
-            gyy_norm, gyx_norm = np.gradient(-self.dsdf_y_normalized)
-            gxy_norm, gxx_norm = np.gradient(self.dsdf_x_normalized)
-
-            self.ddsdf_xx_normalized = gxx_norm 
-            self.ddsdf_yy_normalized = gyy_norm 
-            self.ddsdf_xy_normalized = -gxy_norm 
-            self.ddsdf_yx_normalized = -gyx_norm 
-
-
 
     def vehicle_odom_callback(self, msg):
         """
@@ -455,12 +520,12 @@ class MobileRobot(Node):
         self.Vy = msg.twist.twist.linear.y
         self.Vz = msg.twist.twist.linear.z
 
-        if self.sdf is not None:
+        if len(self.sdf_levels) > 0:
             #t_1 = time()
             self.controller()
             #t_2 = time()
             #print(f"---------------------------------Controller computation time: {t_2 - t_1:.6f} seconds")
-            self.publish_cbf()
+            #self.publish_cbf()
             #self.publish_plot_twist()
 
     def publish_cbf(self):
@@ -479,6 +544,33 @@ class MobileRobot(Node):
             self.publisher_cbf_.publish(msg)
         except Exception as e:
             self.get_logger().error(f"Error in publish_cbf: {e}")
+
+    def cbf_terms_level(self, k, xw, yw, yaw):
+        sdf = self.sdf_at_world_level(k, xw, yw)
+        dsdf_x, dsdf_y = self.grad_at_world_level(k, xw, yw)      # MUST be raw (no normalize)
+        dxx, dxy, dyx, dyy = self.hessian_at_world_level(k, xw, yw)
+
+        l_a = 0.25
+        l_b = 0.0
+        l_s = -np.sqrt(l_a*l_a + l_b*l_b)
+
+        g = np.array([dsdf_x, dsdf_y])
+        x = np.array([np.cos(yaw), np.sin(yaw)])           # DON'T round
+        x_perp = np.array([-np.sin(yaw), np.cos(yaw)])     # DON'T round
+        x = np.around(x, decimals=3)
+        x_perp = np.around(x_perp, decimals=3)
+
+        cbf = sdf + l_s + l_a*(g @ x)                      # same as your file :contentReference[oaicite:8]{index=8}
+
+        g_x = np.array([dxx, dyx])                         # same as your file
+        g_y = np.array([dxy, dyy])
+
+        dcbf_x   = dsdf_x + l_a*(g_x @ x)
+        dcbf_y   = dsdf_y + l_a*(g_y @ x)
+        dcbf_yaw = l_a*(g @ x_perp)
+
+        return cbf, dcbf_x, dcbf_y, dcbf_yaw
+
 
     def controller(self):
         """
@@ -510,90 +602,42 @@ class MobileRobot(Node):
         yw = self.y_real
         yaw = self.yaw
 
-        # Continuous SDF and gradient in WORLD coordinates
-        sdf = self.sdf_at_world(xw, yw)
-        dsdf_x_true, dsdf_y_true = self.sdf_grad_at_world(xw, yw)
-        ddsdf_xx, ddsdf_xy, ddsdf_yx, ddsdf_yy = self.hessian_at_world(xw, yw)
 
-       
+        # L  = self.lookahead_L
+        # d0 = self.safe_margin_d0
+        # alpha = C_alpha
 
-
-        yaw = self.yaw
-        l_a = 0.25#0.025#0.1 (lower, omega has to turn more and be more agressive)
-        l_b = 0.0#2.25
-        l_s = -np.sqrt(l_a**2 + l_b**2) #-l_a -(l_a*beta)# * (2*np.pi*beta + 1)
-        
-        eta = 0.0
-        
-        if math.isnan(eta):
-            self.get_logger().warn("eta is NaN!")
-            eta = 0.0
-
-        
-        g = np.array([dsdf_x_true, dsdf_y_true])   # raw, world
         x = np.array([np.cos(yaw), np.sin(yaw)])
         x = np.around(x, decimals=3)
         x_perp = np.array([-np.sin(yaw), np.cos(yaw)])
         x_perp = np.around(x_perp, decimals=3)
 
-        print(
-            f"x vector: {np.array2string(x, precision=16, separator=', ')} "
-            f"and sdf g: {np.array2string(g, precision=16, separator=', ')}"
-        )
-        print(f"g @ x: {float(g @ x):.16f}")
+        
+        G_rows = [
+        [ 1,0,0], [-1,0,0],
+        [ 0,1,0], [ 0,-1,0],
+        [ 0,0,1], [ 0,0,-1],
+        ]
+        h_rows = [Vmax, -Vmin, Wmax, -Wmin, Delta_ub, -Delta_lb]
 
-        # --- with perpendicular term---
+        for k in range(self.pyr_levels):
+            cbf, dcbf_x, dcbf_y, dcbf_yaw = self.cbf_terms_level(k, xw, yw, yaw)
 
-        cbf = sdf + l_s + l_a*(g @ x)# + l_b*(g @ x_perp)
+            print(f"Level {k}: CBF={cbf:.6f}")
+            if cbf < 0.0:
+                print(f"*** WARNING: CBF level {k} is negative: {cbf:.6f} ***")
 
-        # Hessian columns (world)
-        g_x = np.array([ddsdf_xx, ddsdf_yx])   # ∂g/∂x
-        g_y = np.array([ddsdf_xy, ddsdf_yy])   # ∂g/∂y
+            Av = dcbf_x*np.cos(yaw) + dcbf_y*np.sin(yaw)   # your row 6 “A” :contentReference[oaicite:11]{index=11}
+            Bw = dcbf_yaw                                  # your row 6 “B”
 
-        dcbf_x = dsdf_x_true + l_a*(g_x @ x)# + l_b*(g_x @ x_perp)
-        dcbf_y = dsdf_y_true + l_a*(g_y @ x)# + l_b*(g_y @ x_perp)
-        dcbf_yaw = l_a*(g @ x_perp)# - l_b*(g @ x)
-        # ----------------------------
+            G_rows.append([-Av, -Bw, 0.0])
+            h_rows.append(C_alpha * cbf)
 
-        # --- symmetric (no left/right bias), smooth -------------------
-        # eps_abs = 1e-4  # >0 keeps differentiable at z=0
+        
 
-        # z = float(g @ x_perp)                    # lateral alignment (signed)
-        # absz = math.sqrt(z*z + eps_abs)          # smooth |z|
-        # chain = z / absz                         # d(absz)/dz in (-1,1), well-defined
+        G = np.array(G_rows, dtype=float)
+        h_vec = np.array(h_rows, dtype=float)
 
-        # cbf = sdf + l_s + l_a*float(g @ x) + l_b*absz
-
-        # # Hessian columns (world): g_x = ∂g/∂x, g_y = ∂g/∂y
-        # g_x = np.array([ddsdf_xx, ddsdf_yx])
-        # g_y = np.array([ddsdf_xy, ddsdf_yy])
-
-        # # z_x = ∂(g·x_perp)/∂x = (∂g/∂x)·x_perp   (x_perp independent of x,y)
-        # z_x = float(g_x @ x_perp)
-        # z_y = float(g_y @ x_perp)
-
-        # # yaw: ∂(g·x)/∂yaw = g·x_perp,  ∂(g·x_perp)/∂yaw = -g·x
-        # dcbf_x   = dsdf_x_true + l_a*float(g_x @ x) + l_b*chain*z_x
-        # dcbf_y   = dsdf_y_true + l_a*float(g_y @ x) + l_b*chain*z_y
-        # dcbf_yaw = l_a*float(g @ x_perp) - l_b*chain*float(g @ x)
-
-        # print("---------------------------------------------------------------")
-        # print(f"dcbf_yaw: {dcbf_yaw:.2f}")
-        # print(f"(g @ x_perp): {float(g @ x_perp):.2f}")
-        # print(f"-chain*float(g @ x): {-chain*float(g @ x):.2f}")
-        # ---------------------------------------------------------------
-
-
-        #delta_time = 1/controller_frequency
-        delta_time = self.dt
-        true_cbf_dot = (cbf - self.cbf_prev)/ delta_time
-
-
-
-        #print(f"eta: {np.rad2deg(eta)}")
-
-        print(f"dcbf_x: {dcbf_x:.2f}, dcbf_y: {dcbf_y:.2f}, dcbf_yaw: {dcbf_yaw:.16f}")
-       
 
         Vref = Vmax
         K_Wref = 0.5
@@ -601,88 +645,19 @@ class MobileRobot(Node):
         P_mat = np.diag([Kv, Kw, Kd])
         q = np.array([-Kv * Vref, -Kw * Wref, 0.0])
 
-        # Set up inequality constraints for the QP
-        G = np.array([
-            [1.0, 0, 0],
-            [-1.0, 0, 0],
-            [0, 1.0, 0],
-            [0, -1.0, 0],
-            [0, 0, 1.0],
-            [0, 0, -1.0],
-            [0, 0, 0],
-            [0, 0, 0]
-        ])
-        h_vec = np.array([Vmax, -Vmin, Wmax, -Wmin, Delta_ub, -Delta_lb, 0, 0])
-
-        G[6][0] = -((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))
-        G[6][1] = -dcbf_yaw
-        G[6][2] = 0
-        h_vec[6] = C_alpha * cbf
-
-        G[7][0] = 0
-        G[7][1] = normalize_difference(yaw - heading)
-        G[7][2] = -1
-        V_val = 0.5 * (normalize_difference(yaw - heading))**2
-        h_vec[7] = -C_gamma * V_val
-
         try:
             [vel, dPsi, Delta] = solve_qp(P_mat, q, G, h_vec, solver='quadprog')
-            vel = vel#/0.05
-            dPsi = dPsi
 
-            vel_prev = vel
-            dPsi_prev = dPsi
-
-            cbf_dot_alpha_cbf = (dcbf_x * np.cos(yaw) + dcbf_y * np.sin(yaw)) * vel + dcbf_yaw * dPsi + C_alpha * cbf
-            cbf_dot = (dcbf_x * np.cos(yaw) + dcbf_y * np.sin(yaw)) * vel + dcbf_yaw * dPsi
-            self.cbf_array = [float(cbf), float(cbf_dot), float(cbf_dot_alpha_cbf)]
             self.linear_velocity = float(vel)
             self.angular_velocity = float(dPsi)
-
-            self.cbf_prev = cbf
-
-            
-            print(f"A (Av) is: {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw))):.2f}")
-            print(f"B (Bw) is: {dcbf_yaw:.16f}")
-            print(f"QP Solution: vel={vel:.2f}, omega={dPsi:.16f}")
-            print(f"Av is{((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel:.2f}")
-            print(f"Bw is {dcbf_yaw * dPsi:.16f}")
-            print(f"Av + Bw is {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel + dcbf_yaw * dPsi:.2f}")
-            print(f"cbf: {cbf:.2f}, cbf_dot: {cbf_dot:.2f}, cbf_dot + alpha*cbf: {cbf_dot_alpha_cbf:.2f}")
-            print(f"cbf_dot (true): {true_cbf_dot:.2f}, difference: {cbf_dot - true_cbf_dot:.2f}")
-            print(f"sdf: {sdf:.2f}, eta (deg): {np.rad2deg(eta):.2f}, cbf-sdf: {cbf - sdf:.2f}")
-            print("--------------------------------------------------")
-            
-            
         except Exception as e:
-            self.get_logger().error("Optimization failed, using previous solution.")
-            vel, dPsi = 0.0, 0.0
-            Delta = 0
-
-            vel_prev = vel
-            dPsi_prev = dPsi
-
-            cbf_dot_alpha_cbf = (dcbf_x * np.cos(yaw) + dcbf_y * np.sin(yaw)) * vel + dcbf_yaw * dPsi + C_alpha * cbf
-            cbf_dot = (dcbf_x * np.cos(yaw) + dcbf_y * np.sin(yaw)) * vel + dcbf_yaw * dPsi
-            self.cbf_array = [float(cbf), float(cbf_dot), float(cbf_dot_alpha_cbf)]
-            self.linear_velocity = float(vel)
-            self.angular_velocity = float(dPsi)
-
-            self.cbf_prev = cbf
-
-            
-            print(f"A (Av) is: {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))}")
-            print(f"B (Bw) is: {dcbf_yaw}")
-            print(f"QP Solution: vel={vel}, omega={dPsi}")
-            print(f"Av is{((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel}")
-            print(f"Bw is {dcbf_yaw * dPsi}")
-            print(f"Av + Bw is {((dcbf_x * np.cos(yaw)) + (dcbf_y * np.sin(yaw)))* vel + dcbf_yaw * dPsi}")
-            print(f"cbf: {cbf}, cbf_dot: {cbf_dot}, cbf_dot + alpha*cbf: {cbf_dot_alpha_cbf}")
-            print(f"cbf_dot (true): {true_cbf_dot}, difference: {cbf_dot - true_cbf_dot}")
-            print(f"sdf: {sdf}, eta (deg): {np.rad2deg(eta)}, cbf-sdf: {cbf - sdf}")
-            print("--------------------------------------------------")
-
+            self.get_logger().error(f"QP solver error: {e}")
+            self.linear_velocity = 0.0
+            self.angular_velocity = 0.0
             sys.exit(1)
+
+
+       
 
         
 
