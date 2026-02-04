@@ -352,7 +352,7 @@ class MobileRobot(Node):
             _, map_img = cv2.threshold(map_img, 127, 255, cv2.THRESH_BINARY)
             map_img = np.asarray(map_img)
             
-            #map_img = cv2.bitwise_not(map_img)  # Invert colors: obstacles=255, free=0
+            map_img = cv2.bitwise_not(map_img)  # Invert colors: obstacles=255, free=0
 
             k = 1
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2*k + 1, 2*k + 1))

@@ -204,122 +204,7 @@ class MobileRobot(Node):
         self.ddsdf_xy_levels = []
         self.ddsdf_yx_levels = []
         self.ddsdf_yy_levels = []
-
-
-
-
-    def sdf_at_world(self, x_world, y_world):
-
-        """
-        SDF value at continuous world pose (x_world,y_world) in meters.
-
-        Steps:
-            1) world (m) -> continuous pixel coords (px,py) via world_to_pixel(res, origin, img_height)
-            2) bilinear interpolate self.sdf in pixel space (self.sdf is in *pixels*)
-            3) convert to meters: multiply by map_resolution [m/pixel]
-
-        Returns:
-            sdf_m : float, signed distance in [m] (positive=free, negative=inside obstacle depending on construction).
-        """
-
-        img_height = self.sdf.shape[0]
-        px, py = world_to_pixel(
-            x_world, y_world,
-            resolution=self.map_resolution,
-            origin_x=self.map_origin_x,
-            origin_y=self.map_origin_y,
-            img_height=img_height,
-            continuous=True,
-        )
-        return bilinear(self.sdf, px, py) * self.map_resolution
-
-    def sdf_grad_at_world(self, x_world, y_world):
-
-        """
-        SDF gradient at continuous world pose (x_world,y_world).
-
-        Notes:
-        - self.dsdf_x, self.dsdf_y are computed by np.gradient(self.sdf) => derivatives in pixel units:
-            dsdf_x ~ ∂(sdf_pixels)/∂px   , dsdf_y ~ ∂(sdf_pixels)/∂py
-        - (coords+values both scaled), the numeric first-derivative is unchanged:
-            ∂(sdf_m)/∂(x_m) == ∂(sdf_px)/∂(px)   (same numbers)
-        - returning bilinear(dsdf_*) directly gives gradient in [m/m] (dimensionless slope) w.r.t world axes.
-
-        Returns:
-        (gx, gy): floats ~ (∂sdf/∂x_world, ∂sdf/∂y_world), units [m/m].
-        """
-
-        
-
-        img_height = self.sdf.shape[0]
-        px, py = world_to_pixel(
-            x_world, y_world,
-            resolution=self.map_resolution,
-            origin_x=self.map_origin_x,
-            origin_y=self.map_origin_y,
-            img_height=img_height,
-            continuous=True,
-        )
-
-        ix = int(np.floor(px))
-        iy = int(np.floor(py))
-        print(f"+++++++++++++++dsdfx is {self.dsdf_x[iy, ix]} dsdfy is {self.dsdf_y[iy, ix]}")
-
-
-        
-        gx = bilinear(self.dsdf_x, px, py, debug=True)
-        gy = bilinear(self.dsdf_y, px, py, debug=True)
-        vector_norm = math.sqrt(gx**2 + gy**2)
-        gx /= vector_norm + 1e-8
-        gy /= vector_norm + 1e-8
-        return gx, gy
-    
-    def hessian_at_world(self, x_world, y_world, normalized=False):
-
-        """
-        Hessian of SDF at continuous world pose (x_world,y_world).
-
-        What it returns:
-        (dxx, dxy, dyx, dyy) where
-            dxx = ∂²sdf/∂x², dxy = ∂²sdf/∂x∂y, dyx = ∂²sdf/∂y∂x, dyy = ∂²sdf/∂y²
-
-        Scaling:
-        - Second derivatives scale with 1/length².
-        - stored second-derivative arrays are in pixel space (from np.gradient on pixel gradients),
-        it is converted here to world by dividing by map_resolution [m/pixel] once per “extra” derivative order.
-            (`/ self.map_resolution`.)
-
-        normalized=True uses Hessian of normalized gradient field (curvature-ish direction field), not raw SDF.
-        """
-
-        # Chain rule: since (px,py)=world_to_pixel(x_world,y_world,res) and sdf_world = sdf_px*map_resolution,
-        # ∂/∂x_world = (1/map_resolution)∂/∂px so ∂sdf_world/∂x_world = ∂sdf_px/∂px, and ∂²sdf_world/∂x_world² = (1/map_resolution)∂²sdf_px/∂px².
-
-        H = self.sdf.shape[0]
-
-        px, py = world_to_pixel(
-            x_world, y_world,
-            resolution=self.map_resolution,
-            origin_x=self.map_origin_x,
-            origin_y=self.map_origin_y,
-            img_height=H,
-            continuous=True,        # <-- IMPORTANT: keep fractional pixels
-        )
-
-        dxx = bilinear(self.ddsdf_xx, px, py)
-        dxy = bilinear(self.ddsdf_xy, px, py)
-        dyx = bilinear(self.ddsdf_yx, px, py)
-        dyy = bilinear(self.ddsdf_yy, px, py)
-        if normalized:
-            dxx = bilinear(self.ddsdf_xx_normalized, px, py)
-            dxy = bilinear(self.ddsdf_xy_normalized, px, py)
-            dyx = bilinear(self.ddsdf_yx_normalized, px, py)
-            dyy = bilinear(self.ddsdf_yy_normalized, px, py)
-
-
-        return dxx/self.map_resolution, dxy/self.map_resolution, dyx/self.map_resolution, dyy/self.map_resolution
-
-        
+   
 
     def publish_velocity(self):
         """Publish the velocity as a Twist message."""
@@ -422,10 +307,15 @@ class MobileRobot(Node):
 
             sdf_px, dsdfx, dsdfy = signed_sdf_and_grad_from_free(free_k)
 
-            # Hessian in pixel space (same as your original file) :contentReference[oaicite:4]{index=4}
+            # Hessian in pixel space 
             edges_y, edges_x = np.gradient(sdf_px)
+            norm = np.sqrt(edges_x**2 + edges_y**2) + 1e-8
+            edges_x /= norm
+            edges_y /= norm
+
             gyy, gyx = np.gradient(edges_y)
             gxy, gxx = np.gradient(edges_x)
+
 
             ddsdf_xx = gxx
             ddsdf_yy = gyy
@@ -454,7 +344,7 @@ class MobileRobot(Node):
                                 img_height=H, continuous=True)
         return bilinear(sdf, px, py) * res  # meters
 
-    def grad_at_world_level(self, k, xw, yw):
+    def grad_at_world_level(self, k, xw, yw, normalize=False):
         dsx = self.dsdfx_levels[k]
         dsy = self.dsdfy_levels[k]
         res = self.res_levels[k]
@@ -462,8 +352,17 @@ class MobileRobot(Node):
         px, py = world_to_pixel(xw, yw, resolution=res,
                                 origin_x=self.map_origin_x, origin_y=self.map_origin_y,
                                 img_height=H, continuous=True)
+        if normalize:
+            gx = bilinear(dsx, px, py)
+            gy = bilinear(dsy, px, py)
+            norm = math.sqrt(gx**2 + gy**2) + 1e-8
+            gx /= norm
+            gy /= norm
+            return gx, gy  # ~ ∂φ/∂x, ∂φ/∂y (unitless)
+        
         gx = bilinear(dsx, px, py)
         gy = bilinear(dsy, px, py)
+        
         return gx, gy  # ~ ∂φ/∂x, ∂φ/∂y (m/m)
     
 
@@ -547,22 +446,24 @@ class MobileRobot(Node):
 
     def cbf_terms_level(self, k, xw, yw, yaw):
         sdf = self.sdf_at_world_level(k, xw, yw)
-        dsdf_x, dsdf_y = self.grad_at_world_level(k, xw, yw)      # MUST be raw (no normalize)
+        dsdf_x, dsdf_y = self.grad_at_world_level(k, xw, yw, normalize=False) 
+        dsdf_x_norm, dsdf_y_norm = self.grad_at_world_level(k, xw, yw, normalize=True)      
         dxx, dxy, dyx, dyy = self.hessian_at_world_level(k, xw, yw)
 
-        l_a = 0.25
-        l_b = 0.0
-        l_s = -np.sqrt(l_a*l_a + l_b*l_b)
+        
 
-        g = np.array([dsdf_x, dsdf_y])
-        x = np.array([np.cos(yaw), np.sin(yaw)])           # DON'T round
-        x_perp = np.array([-np.sin(yaw), np.cos(yaw)])     # DON'T round
+        l_a = 0.25
+        l_s = -l_a
+
+        g = np.array([dsdf_x_norm, dsdf_y_norm])
+        x = np.array([np.cos(yaw), np.sin(yaw)])           
+        x_perp = np.array([-np.sin(yaw), np.cos(yaw)])     
         x = np.around(x, decimals=3)
         x_perp = np.around(x_perp, decimals=3)
 
-        cbf = sdf + l_s + l_a*(g @ x)                      # same as your file :contentReference[oaicite:8]{index=8}
+        cbf = sdf + l_s + l_a*(g @ x)                      
 
-        g_x = np.array([dxx, dyx])                         # same as your file
+        g_x = np.array([dxx, dyx])                         
         g_y = np.array([dxy, dyy])
 
         dcbf_x   = dsdf_x + l_a*(g_x @ x)
@@ -626,9 +527,10 @@ class MobileRobot(Node):
             print(f"Level {k}: CBF={cbf:.6f}")
             if cbf < 0.0:
                 print(f"*** WARNING: CBF level {k} is negative: {cbf:.6f} ***")
+                #sys.exit(1)
 
-            Av = dcbf_x*np.cos(yaw) + dcbf_y*np.sin(yaw)   # your row 6 “A” :contentReference[oaicite:11]{index=11}
-            Bw = dcbf_yaw                                  # your row 6 “B”
+            Av = dcbf_x*np.cos(yaw) + dcbf_y*np.sin(yaw)   
+            Bw = dcbf_yaw                                  
 
             G_rows.append([-Av, -Bw, 0.0])
             h_rows.append(C_alpha * cbf)
