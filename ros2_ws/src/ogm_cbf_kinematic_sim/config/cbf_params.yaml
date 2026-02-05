@@ -21,3 +21,7 @@ CBF_Controller_Node:
     sdf_arrow_step: 25
     sdf_arrow_len: 12
 
+    cbf_metrics_pub: true
+
+    obs_inflate_p: 7.0
+

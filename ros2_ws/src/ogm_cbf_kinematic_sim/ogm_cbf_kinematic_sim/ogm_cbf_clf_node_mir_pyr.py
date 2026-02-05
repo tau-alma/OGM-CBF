@@ -216,6 +216,10 @@ class MobileRobot(Node):
             for k in range(self.pyr_levels)
         ]
 
+        self.declare_parameter('obs_inflate_p', 7.0)  # meters, 0 disables
+        self.obs_inflate_p = float(self.get_parameter('obs_inflate_p').value)
+
+
 
         # ---- SDF publish params ----
         self.declare_parameter('sdf_pub', True)              # enable publishing
@@ -367,7 +371,12 @@ class MobileRobot(Node):
         _, map_img = cv2.threshold(map_img, 127, 255, cv2.THRESH_BINARY)
         map_img = np.asarray(map_img)
 
-        map_img = cv2.bitwise_not(map_img)  # Invert colors: obstacles=255, free=0
+        #map_img = cv2.bitwise_not(map_img)  # Invert colors: obstacles=255, free=0
+        map_img = 255 - map_img  # Invert colors: obstacles=255, free=0
+
+        k = int(self.obs_inflate_p)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2*k + 1, 2*k + 1))
+        map_img = cv2.erode(map_img, kernel, iterations=1)
 
         K = self.pyr_levels
         #free_k = map_img.copy()
@@ -386,12 +395,8 @@ class MobileRobot(Node):
 
 
         for k, img in enumerate(free_pyr):
-            # optional: extra conservative inflation per level (dilate obstacles == erode free)
-            # free_k = cv2.erode(free_k, kernel, iterations=infl_iters_k)
-
+            
             free_k = ((img > 127).astype(np.uint8) * 255)
-
-
             sdf_px, dsdfx, dsdfy = signed_sdf_and_grad_from_free(free_k)
 
             # Hessian in pixel space 
