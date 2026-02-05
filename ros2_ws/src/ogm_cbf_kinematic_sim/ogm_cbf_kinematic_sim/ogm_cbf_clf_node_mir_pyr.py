@@ -21,6 +21,8 @@ from ogm_cbf_kinematic_sim.utils import world_to_pixel
 from time import time
 import sys
 from ogm_cbf_kinematic_sim.conf import controller_frequency, simulator_frequency
+from rcl_interfaces.msg import SetParametersResult
+
 
 def bilinear(arr, x, y , debug=False):
     H, W = arr.shape
@@ -110,7 +112,7 @@ def signed_sdf_and_grad_from_free(free_u8):
 
 class MobileRobot(Node):
     def __init__(self, state=[0,0,0], timestep=0.1):
-        super().__init__('minimal_publisher')
+        super().__init__('CBF_Controller_Node')
         self.vehicle_info = self.create_subscription(Odometry, "odom_2", self.vehicle_odom_callback, 1)
         self.subscription_2 = self.create_subscription(Image, 'map_image', self.listener_callback_map, 1)
         self.publisher_image_ = self.create_publisher(Image, '/cbf_image', 1)
@@ -167,24 +169,29 @@ class MobileRobot(Node):
         self.linear_velocity = self.angular_velocity = 0.0
 
         # Controller hyperparameters
-        self.declare_parameter('C_alpha',     0.01 * 0.5)
-        self.declare_parameter('Vmin',       -1.0)
-        self.declare_parameter('Vmax',        1.0)
-        self.declare_parameter('Wmin', -4*np.pi)
-        self.declare_parameter('Wmax',  4*np.pi)
+        self.declare_parameter('C_alpha',     0.9)
+        self.declare_parameter('Vmin',       -0.5)
+        self.declare_parameter('Vmax',        0.5)
+        self.declare_parameter('Wmin', -0.25*np.pi)
+        self.declare_parameter('Wmax',  0.25*np.pi)
 
-        self.declare_parameter('Delta_lb',   -0.5)
-        self.declare_parameter('Delta_ub',    0.5)
+        self.declare_parameter('Delta_lb',   -1.0)
+        self.declare_parameter('Delta_ub',    1.0)
 
         # CBF-specific offsets
         self.declare_parameter('l_a',      0.25)
         self.declare_parameter('l_s',     -0.25)
-        self.declare_parameter('sdf_a',   3.0)
+        self.declare_parameter('target_heading', 0.0) #radians
 
-        self.file_path = "cbf_data.csv"
-        with open(self.file_path, mode="w", newline="") as file:
-            writer = csv.writer(file)
-            writer.writerow(["Time (s)", "CBF Array[0]", "CBF Array[1]"])
+        
+
+
+
+
+        # self.file_path = "cbf_data.csv"
+        # with open(self.file_path, mode="w", newline="") as file:
+        #     writer = csv.writer(file)
+        #     writer.writerow(["Time (s)", "CBF Array[0]", "CBF Array[1]"])
 
         self.cbf_prev = 0.0
         self.time_cbf_prev = 0.0
@@ -193,9 +200,9 @@ class MobileRobot(Node):
         self.map_origin_y = 0.0
         self.map_erode = np.zeros((self.map_height, self.map_width), dtype=np.uint8)
 
-        self.pyr_levels = 5          # K
-        self.lookahead_L = 0.5       # meters
-        self.safe_margin_d0 = 0.2    # meters
+        self.declare_parameter('pyr_levels', 5)
+
+        self.pyr_levels = self.get_parameter('pyr_levels').value
         self.sdf_levels = []         # list[np.ndarray float32]  (pixels)
         self.dsdfx_levels = []       # list[np.ndarray float32]
         self.dsdfy_levels = []
@@ -204,6 +211,79 @@ class MobileRobot(Node):
         self.ddsdf_xy_levels = []
         self.ddsdf_yx_levels = []
         self.ddsdf_yy_levels = []
+
+        # ---- SDF publish params ----
+        self.declare_parameter('sdf_pub', True)              # enable publishing
+        self.declare_parameter('sdf_draw_grad', False)       # FLAG: arrows on/off
+        self.declare_parameter('sdf_pub_hz', 1.0)
+        self.declare_parameter('sdf_arrow_step', 25)         # px grid step (per level)
+        self.declare_parameter('sdf_arrow_len', 12)          # px arrow length
+
+        self.sdf_pub       = bool(self.get_parameter('sdf_pub').value)
+        self.sdf_draw_grad = bool(self.get_parameter('sdf_draw_grad').value)
+        self.sdf_pub_hz    = float(self.get_parameter('sdf_pub_hz').value)
+        self.sdf_arrow_step= int(self.get_parameter('sdf_arrow_step').value)
+        self.sdf_arrow_len = float(self.get_parameter('sdf_arrow_len').value)
+
+        self.publisher_sdf_levels_ = [
+            self.create_publisher(Image, f'/sdf_level_{k}', 1)
+            for k in range(self.pyr_levels)
+        ]
+        self.sdf_timer_ = self.create_timer(1.0 / max(1e-3, self.sdf_pub_hz), self.publish_sdf_levels)
+
+        self.add_on_set_parameters_callback(self._on_params)
+
+
+
+    def _on_params(self, params):
+        for p in params:
+            if p.name == 'sdf_pub':        self.sdf_pub = bool(p.value)
+            if p.name == 'sdf_draw_grad':  self.sdf_draw_grad = bool(p.value)
+            if p.name == 'sdf_pub_hz':     self.sdf_pub_hz = float(p.value)
+            if p.name == 'sdf_arrow_step': self.sdf_arrow_step = int(p.value)
+            if p.name == 'sdf_arrow_len':  self.sdf_arrow_len = float(p.value)
+        return SetParametersResult(successful=True)
+
+    def sdf_to_rgb(self, sdf_px: np.ndarray) -> np.ndarray:
+        s = np.nan_to_num(sdf_px, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
+        s_u8 = cv2.normalize(s, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+        bgr  = cv2.applyColorMap(s_u8, cv2.COLORMAP_VIRIDIS)
+        return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+
+    def overlay_grad_arrows(self, rgb, dsdfx, dsdfy, step, arrow_len):
+        H, W = dsdfx.shape
+        step = max(1, int(step))
+        L    = float(arrow_len)
+        for y in range(0, H, step):
+            for x in range(0, W, step):
+                gx = float(dsdfx[y, x])
+                gy = float(-dsdfy[y, x])          # dsdfy is Cartesian-up; image y is down
+                mag = math.hypot(gx, gy)
+                if mag < 1e-6: 
+                    continue
+                ux, uy = gx / mag, gy / mag
+                x2 = int(round(x + ux * L))
+                y2 = int(round(y + uy * L))
+                cv2.arrowedLine(rgb, (x, y), (x2, y2), (255, 0, 0), 1, tipLength=0.3)
+        return rgb
+
+    def publish_sdf_levels(self):
+        if (not self.sdf_pub) or (len(self.sdf_levels) == 0):
+            return
+
+        stamp = self.time_map.to_msg() if isinstance(self.time_map, Time) else self.get_clock().now().to_msg()
+
+        for k in range(min(self.pyr_levels, len(self.sdf_levels))):
+            rgb = self.sdf_to_rgb(self.sdf_levels[k])
+
+            if self.sdf_draw_grad:
+                rgb = self.overlay_grad_arrows(rgb, self.dsdfx_levels[k], self.dsdfy_levels[k],
+                                            self.sdf_arrow_step, self.sdf_arrow_len)
+
+            msg = self.bridge.cv2_to_imgmsg(rgb, encoding='rgb8')
+            msg.header.stamp = stamp
+            self.publisher_sdf_levels_[k].publish(msg)
+
    
 
     def publish_velocity(self):
@@ -280,7 +360,7 @@ class MobileRobot(Node):
         _, map_img = cv2.threshold(map_img, 127, 255, cv2.THRESH_BINARY)
         map_img = np.asarray(map_img)
 
-        #map_img = cv2.bitwise_not(map_img)  # Invert colors: obstacles=255, free=0
+        map_img = cv2.bitwise_not(map_img)  # Invert colors: obstacles=255, free=0
 
         K = self.pyr_levels
         #free_k = map_img.copy()
@@ -309,9 +389,11 @@ class MobileRobot(Node):
 
             # Hessian in pixel space 
             edges_y, edges_x = np.gradient(sdf_px)
-            norm = np.sqrt(edges_x**2 + edges_y**2) + 1e-8
-            edges_x /= norm
-            edges_y /= norm
+            norm = np.sqrt(edges_x**2 + edges_y**2)
+            edges_x /= norm + 1e-6
+            edges_y /= norm + 1e-6
+
+            # we only get derivative of normalized dsdf because that is what we use in CBF
 
             gyy, gyx = np.gradient(edges_y)
             gxy, gxx = np.gradient(edges_x)
@@ -355,9 +437,10 @@ class MobileRobot(Node):
         if normalize:
             gx = bilinear(dsx, px, py)
             gy = bilinear(dsy, px, py)
-            norm = math.sqrt(gx**2 + gy**2) + 1e-8
-            gx /= norm
-            gy /= norm
+            norm = math.sqrt(gx**2 + gy**2)
+            # print(f"grad_at_world_level normalize: gx={gx:.6f}, gy={gy:.6f}, norm={norm:.6f}")
+            gx /= norm + 1e-6
+            gy /= norm + 1e-6
             return gx, gy  # ~ ∂φ/∂x, ∂φ/∂y (unitless)
         
         gx = bilinear(dsx, px, py)
@@ -427,22 +510,22 @@ class MobileRobot(Node):
             #self.publish_cbf()
             #self.publish_plot_twist()
 
-    def publish_cbf(self):
-        """
-        Publish the CBF array (for debugging) and log the data.
-        """
-        try:
-            msg = Float64MultiArray()
-            now = self.get_clock().now().nanoseconds
-            elapsed_time = (now - self.start_time) / 1e9
-            with open(self.file_path, mode="a", newline="") as file:
-                writer = csv.writer(file)
-                writer.writerow([elapsed_time, self.cbf_array[0], self.cbf_array[1], self.cbf_array[2]])
-            data = self.cbf_array + [0.0]
-            msg.data = data
-            self.publisher_cbf_.publish(msg)
-        except Exception as e:
-            self.get_logger().error(f"Error in publish_cbf: {e}")
+    # def publish_cbf(self):
+    #     """
+    #     Publish the CBF array (for debugging) and log the data.
+    #     """
+    #     try:
+    #         msg = Float64MultiArray()
+    #         now = self.get_clock().now().nanoseconds
+    #         elapsed_time = (now - self.start_time) / 1e9
+    #         with open(self.file_path, mode="a", newline="") as file:
+    #             writer = csv.writer(file)
+    #             writer.writerow([elapsed_time, self.cbf_array[0], self.cbf_array[1], self.cbf_array[2]])
+    #         data = self.cbf_array + [0.0]
+    #         msg.data = data
+    #         self.publisher_cbf_.publish(msg)
+    #     except Exception as e:
+    #         self.get_logger().error(f"Error in publish_cbf: {e}")
 
     def cbf_terms_level(self, k, xw, yw, yaw):
         sdf = self.sdf_at_world_level(k, xw, yw)
@@ -457,9 +540,16 @@ class MobileRobot(Node):
 
         g = np.array([dsdf_x_norm, dsdf_y_norm])
         x = np.array([np.cos(yaw), np.sin(yaw)])           
-        x_perp = np.array([-np.sin(yaw), np.cos(yaw)])     
-        x = np.around(x, decimals=3)
-        x_perp = np.around(x_perp, decimals=3)
+        x_perp = np.array([-np.sin(yaw), np.cos(yaw)]) 
+
+
+        x = np.around(x, decimals=6)
+        x_perp = np.around(x_perp, decimals=6)
+        g = np.around(g, decimals=6)
+        sdf = np.around(sdf, decimals=6)
+        dsdf_x = np.around(dsdf_x, decimals=6)
+        dsdf_y = np.around(dsdf_y, decimals=6)
+
 
         cbf = sdf + l_s + l_a*(g @ x)                      
 
@@ -469,6 +559,11 @@ class MobileRobot(Node):
         dcbf_x   = dsdf_x + l_a*(g_x @ x)
         dcbf_y   = dsdf_y + l_a*(g_y @ x)
         dcbf_yaw = l_a*(g @ x_perp)
+
+        cbf = np.around(cbf, decimals=6)
+        dcbf_x = np.around(dcbf_x, decimals=6)
+        dcbf_y = np.around(dcbf_y, decimals=6)
+        dcbf_yaw = np.around(dcbf_yaw, decimals=6)
 
         return cbf, dcbf_x, dcbf_y, dcbf_yaw
 
@@ -480,38 +575,27 @@ class MobileRobot(Node):
         """
         global vel_prev, dPsi_prev
         # Hyperparameters and reference values
-        C_alpha = 0.9#5#0.005#self.get_parameter('C_alpha').value #0.05#0.01 * 0.5
-        P_alpha = 1.0
+        C_alpha = self.get_parameter('C_alpha').value 
+
         Kv = 1.0
         Kw = 0.01
         Kd = 1.0
-        C_gamma = 1.0
-        P_gamma = 1.0
-        Vmax =0.5 #self.get_parameter('Vmax').value #1.0
-        Vmin = -0.5#self.get_parameter('Vmin').value #-1.0
-        Wmax = 0.25 * np.pi#self.get_parameter('Wmax').value #4 * np.pi
-        Wmin = -0.25* np.pi#self.get_parameter('Wmin').value #-4 * np.pi
+        
+        Vmax = self.get_parameter('Vmax').value 
+        Vmin = self.get_parameter('Vmin').value 
+        Wmax = self.get_parameter('Wmax').value 
+        Wmin = self.get_parameter('Wmin').value 
 
         
         
-        Delta_ub = 1.0#0.5#self.get_parameter('Delta_ub').value #0.5
-        Delta_lb = -1.0#-0.5#self.get_parameter('Delta_lb').value #-0.5
-        #heading = normalize_angle(np.pi - np.pi/6)
-        heading = normalize_angle(np.pi)
+        Delta_ub = self.get_parameter('Delta_ub').value
+        Delta_lb = self.get_parameter('Delta_lb').value
+
+        target_heading = normalize_angle(self.get_parameter('target_heading').value)
 
         xw = self.x_real
         yw = self.y_real
         yaw = self.yaw
-
-
-        # L  = self.lookahead_L
-        # d0 = self.safe_margin_d0
-        # alpha = C_alpha
-
-        x = np.array([np.cos(yaw), np.sin(yaw)])
-        x = np.around(x, decimals=3)
-        x_perp = np.array([-np.sin(yaw), np.cos(yaw)])
-        x_perp = np.around(x_perp, decimals=3)
 
         
         G_rows = [
@@ -524,10 +608,11 @@ class MobileRobot(Node):
         for k in range(self.pyr_levels):
             cbf, dcbf_x, dcbf_y, dcbf_yaw = self.cbf_terms_level(k, xw, yw, yaw)
 
-            print(f"Level {k}: CBF={cbf:.6f}")
+            
+            self.get_logger().info(f"Level {k}: CBF={cbf:.6f}")
             if cbf < 0.0:
-                print(f"*** WARNING: CBF level {k} is negative: {cbf:.6f} ***")
-                #sys.exit(1)
+                self.get_logger().warn(f"*** WARNING: CBF level {k} is negative: {cbf:.6f} ***")
+                sys.exit(1)
 
             Av = dcbf_x*np.cos(yaw) + dcbf_y*np.sin(yaw)   
             Bw = dcbf_yaw                                  
@@ -543,12 +628,17 @@ class MobileRobot(Node):
 
         Vref = Vmax
         K_Wref = 0.5
-        Wref = K_Wref * normalize_difference(heading - yaw)
+        Wref = K_Wref * normalize_difference(target_heading - yaw)
         P_mat = np.diag([Kv, Kw, Kd])
         q = np.array([-Kv * Vref, -Kw * Wref, 0.0])
 
         try:
             [vel, dPsi, Delta] = solve_qp(P_mat, q, G, h_vec, solver='quadprog')
+
+            # sol = np.array([vel, dPsi, Delta], dtype=float)
+            # viol = np.max(G @ sol - h_vec)   # <= 0 is satisfied
+            # self.get_logger().info(f"max_violation: {viol}")
+
 
             self.linear_velocity = float(vel)
             self.angular_velocity = float(dPsi)

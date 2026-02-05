@@ -1,0 +1,23 @@
+CBF_Controller_Node:
+  ros__parameters:
+    # controller
+    C_alpha: 0.3
+    Vmin: -0.5
+    Vmax: 0.5
+    Wmin: -0.7853981633974483   # -0.25*pi
+    Wmax: 0.7853981633974483    #  0.25*pi
+    Delta_lb: -1.0
+    Delta_ub: 1.0
+
+    # cbf offsets
+    l_a: 0.25
+    l_s: -0.25
+    target_heading: 0.0
+
+    # sdf debug publish
+    sdf_pub: true
+    sdf_draw_grad: false
+    sdf_pub_hz: 1.0
+    sdf_arrow_step: 25
+    sdf_arrow_len: 12
+

@@ -4,6 +4,7 @@ from sensor_msgs.msg import Image
 import cv2
 from cv_bridge import CvBridge
 import os
+from ament_index_python.packages import get_package_share_directory
 
 class MapPublisherNode(Node):
     def __init__(self):
@@ -11,15 +12,13 @@ class MapPublisherNode(Node):
         self.publisher_ = self.create_publisher(Image, 'map_image', 1)
         self.timer = self.create_timer(0.01, self.publish_map)
         self.bridge = CvBridge()
-        #self.map_path = os.path.join(os.path.dirname(__file__), '/home/golnaz/workspace/projects/work/OGM-CBF/ros2_ws/src/ogm_cbf_kinematic_sim/ogm_cbf_kinematic_sim/map/k2-obs1.png')
-        #self.map_path = os.path.join(os.path.dirname(__file__), '/home/golnaz/ogm_imgmap_png/frame_000881_1766238885_707412032.png')
-        #self.map_path = os.path.join(os.path.dirname(__file__), '/home/golnaz/workspace/projects/work/OGM-CBF/ros2_ws/src/ogm_cbf_kinematic_sim/ogm_cbf_kinematic_sim/map/festia_map/Frame 36 (1).png')
-        #self.map_path = os.path.join(os.path.dirname(__file__), '/home/golnaz/workspace/projects/work/OGM-CBF/ros2_ws/src/ogm_cbf_kinematic_sim/ogm_cbf_kinematic_sim/map/festia_map/festia_map.png')
-        self.map_path = os.path.join(os.path.dirname(__file__), '/home/golnaz/workspace/projects/work/OGM-CBF/ros2_ws/src/ogm_cbf_kinematic_sim/ogm_cbf_kinematic_sim/map/Frame 14 (1).png')
-        
-        #self.map_path = os.path.join(os.path.dirname(__file__), 'hard.png')
-        #self.map_path = os.path.join(os.path.dirname(__file__), 'blank_map.png')
-    
+       
+        default_map = os.path.join(
+            get_package_share_directory('ogm_cbf_kinematic_sim'),
+            'map', 'festia_map', 'festia_map.png'
+        )
+        self.declare_parameter('map_path', default_map)
+        self.map_path = self.get_parameter('map_path').value
         self.get_logger().info(f'Map path set to: {self.map_path}')
 
     def publish_map(self):
