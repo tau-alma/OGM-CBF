@@ -30,7 +30,7 @@ class StartPoseSelector(Node):
 
         # Subscribe to map_image once
         self.map_sub = self.create_subscription(
-            Image, 'map_image', self.map_callback, 1
+            Image, '/ogm/imgmap', self.map_callback, 1
         )
 
         # Publisher for the selected initial pose

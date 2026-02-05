@@ -113,14 +113,14 @@ def signed_sdf_and_grad_from_free(free_u8):
 class MobileRobot(Node):
     def __init__(self, state=[0,0,0], timestep=0.1):
         super().__init__('CBF_Controller_Node')
-        self.vehicle_info = self.create_subscription(Odometry, "odom_2", self.vehicle_odom_callback, 1)
-        self.subscription_2 = self.create_subscription(Image, 'map_image', self.listener_callback_map, 1)
+        self.vehicle_info = self.create_subscription(Odometry, "odom_in_map", self.vehicle_odom_callback, 1)
+        self.subscription_2 = self.create_subscription(Image, '/ogm/imgmap', self.listener_callback_map, 1)
         self.publisher_image_ = self.create_publisher(Image, '/cbf_image', 1)
         self.contour_timer_ = self.create_timer(1.0, self.publish_image)
         self.bridge = CvBridge()
         self.publisher_cbf_ = self.create_publisher(Float64MultiArray, '/cbf_array', 1)
         self.publisher_plot_twist_ = self.create_publisher(TwistStamped, '/plot_vel', 1)
-        self.twist_publisher_ = self.create_publisher(Twist, 'cmd_vel_2', 1)
+        self.twist_publisher_ = self.create_publisher(Twist, 'cmd_vel', 1)
 
         vel_pub_time = 1.0 / controller_frequency
         self.twist_timer = self.create_timer(vel_pub_time, self.publish_velocity)
@@ -146,7 +146,7 @@ class MobileRobot(Node):
         self.map = None
         self.map_height = 146#None
         self.map_width = 192#None
-        self.recieved_map = False
+        #self.recieved_map = False
 
 
         # Do not preallocate arrays with fixed dimensions;
@@ -181,7 +181,8 @@ class MobileRobot(Node):
         # CBF-specific offsets
         self.declare_parameter('l_a',      0.25)
         self.declare_parameter('l_s',     -0.25)
-        self.declare_parameter('target_heading', 0.0) #radians
+        self.declare_parameter('target_heading', 0.0) #degrees
+
 
         
 
@@ -591,7 +592,7 @@ class MobileRobot(Node):
         Delta_ub = self.get_parameter('Delta_ub').value
         Delta_lb = self.get_parameter('Delta_lb').value
 
-        target_heading = normalize_angle(self.get_parameter('target_heading').value)
+        target_heading = normalize_angle(np.deg2rad(self.get_parameter('target_heading').value))
 
         xw = self.x_real
         yw = self.y_real

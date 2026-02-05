@@ -20,8 +20,8 @@ class MapVizNode(Node):
         self.callback_group_async = ReentrantCallbackGroup()
 
         # Subscribers
-        self.map_subscriber = self.create_subscription(Image, 'map_image', self.map_callback, 1, callback_group = self.callback_group_async)
-        self.odom_subscriber = self.create_subscription(Odometry, 'odom_2', self.odom_callback, 1,  callback_group = self.callback_group_async)
+        self.map_subscriber = self.create_subscription(Image, '/ogm/imgmap', self.map_callback, 1, callback_group = self.callback_group_async)
+        self.odom_subscriber = self.create_subscription(Odometry, 'odom_in_map', self.odom_callback, 1,  callback_group = self.callback_group_async)
         self.publisher_image_ = self.create_publisher(Image, '/map_traj_image', 1,  callback_group = self.callback_group_async)
 
         # Timer for publishing trajectory map
