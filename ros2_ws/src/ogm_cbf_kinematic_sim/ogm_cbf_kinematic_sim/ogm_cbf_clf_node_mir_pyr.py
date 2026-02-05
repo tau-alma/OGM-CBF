@@ -22,6 +22,8 @@ from time import time
 import sys
 from ogm_cbf_kinematic_sim.conf import controller_frequency, simulator_frequency
 from rcl_interfaces.msg import SetParametersResult
+from std_msgs.msg import Float64
+
 
 
 def bilinear(arr, x, y , debug=False):
@@ -118,7 +120,7 @@ class MobileRobot(Node):
         self.publisher_image_ = self.create_publisher(Image, '/cbf_image', 1)
         self.contour_timer_ = self.create_timer(1.0, self.publish_image)
         self.bridge = CvBridge()
-        self.publisher_cbf_ = self.create_publisher(Float64MultiArray, '/cbf_array', 1)
+        
         self.publisher_plot_twist_ = self.create_publisher(TwistStamped, '/plot_vel', 1)
         self.twist_publisher_ = self.create_publisher(Twist, 'cmd_vel', 1)
 
@@ -183,17 +185,6 @@ class MobileRobot(Node):
         self.declare_parameter('l_s',     -0.25)
         self.declare_parameter('target_heading', 0.0) #degrees
 
-
-        
-
-
-
-
-        # self.file_path = "cbf_data.csv"
-        # with open(self.file_path, mode="w", newline="") as file:
-        #     writer = csv.writer(file)
-        #     writer.writerow(["Time (s)", "CBF Array[0]", "CBF Array[1]"])
-
         self.cbf_prev = 0.0
         self.time_cbf_prev = 0.0
         self.map_resolution = 0.05
@@ -213,6 +204,19 @@ class MobileRobot(Node):
         self.ddsdf_yx_levels = []
         self.ddsdf_yy_levels = []
 
+        self.declare_parameter('cbf_metrics_pub', True)
+        self.cbf_metrics_pub = bool(self.get_parameter('cbf_metrics_pub').value)
+
+        self.pub_cbf_level_ = [
+            self.create_publisher(Float64, f'/cbf/level_{k}', 1)
+            for k in range(self.pyr_levels)
+        ]
+        self.pub_cbf_dot_alpha_level_ = [
+            self.create_publisher(Float64, f'/cbf_dot_alpha/level_{k}', 1)
+            for k in range(self.pyr_levels)
+        ]
+
+
         # ---- SDF publish params ----
         self.declare_parameter('sdf_pub', True)              # enable publishing
         self.declare_parameter('sdf_draw_grad', False)       # FLAG: arrows on/off
@@ -225,6 +229,8 @@ class MobileRobot(Node):
         self.sdf_pub_hz    = float(self.get_parameter('sdf_pub_hz').value)
         self.sdf_arrow_step= int(self.get_parameter('sdf_arrow_step').value)
         self.sdf_arrow_len = float(self.get_parameter('sdf_arrow_len').value)
+
+        
 
         self.publisher_sdf_levels_ = [
             self.create_publisher(Image, f'/sdf_level_{k}', 1)
@@ -507,26 +513,6 @@ class MobileRobot(Node):
             #t_1 = time()
             self.controller()
             #t_2 = time()
-            #print(f"---------------------------------Controller computation time: {t_2 - t_1:.6f} seconds")
-            #self.publish_cbf()
-            #self.publish_plot_twist()
-
-    # def publish_cbf(self):
-    #     """
-    #     Publish the CBF array (for debugging) and log the data.
-    #     """
-    #     try:
-    #         msg = Float64MultiArray()
-    #         now = self.get_clock().now().nanoseconds
-    #         elapsed_time = (now - self.start_time) / 1e9
-    #         with open(self.file_path, mode="a", newline="") as file:
-    #             writer = csv.writer(file)
-    #             writer.writerow([elapsed_time, self.cbf_array[0], self.cbf_array[1], self.cbf_array[2]])
-    #         data = self.cbf_array + [0.0]
-    #         msg.data = data
-    #         self.publisher_cbf_.publish(msg)
-    #     except Exception as e:
-    #         self.get_logger().error(f"Error in publish_cbf: {e}")
 
     def cbf_terms_level(self, k, xw, yw, yaw):
         sdf = self.sdf_at_world_level(k, xw, yw)
@@ -606,6 +592,10 @@ class MobileRobot(Node):
         ]
         h_rows = [Vmax, -Vmin, Wmax, -Wmin, Delta_ub, -Delta_lb]
 
+        cbf_list = []
+        Av_list  = []
+        Bw_list  = []
+
         for k in range(self.pyr_levels):
             cbf, dcbf_x, dcbf_y, dcbf_yaw = self.cbf_terms_level(k, xw, yw, yaw)
 
@@ -613,10 +603,14 @@ class MobileRobot(Node):
             self.get_logger().info(f"Level {k}: CBF={cbf:.6f}")
             if cbf < 0.0:
                 self.get_logger().warn(f"*** WARNING: CBF level {k} is negative: {cbf:.6f} ***")
-                sys.exit(1)
+                #sys.exit(1)
 
             Av = dcbf_x*np.cos(yaw) + dcbf_y*np.sin(yaw)   
-            Bw = dcbf_yaw                                  
+            Bw = dcbf_yaw 
+
+            cbf_list.append(float(cbf))
+            Av_list.append(float(Av))
+            Bw_list.append(float(Bw))
 
             G_rows.append([-Av, -Bw, 0.0])
             h_rows.append(C_alpha * cbf)
@@ -640,6 +634,21 @@ class MobileRobot(Node):
             # viol = np.max(G @ sol - h_vec)   # <= 0 is satisfied
             # self.get_logger().info(f"max_violation: {viol}")
 
+            if self.cbf_metrics_pub:
+                v = float(vel)
+                w = float(dPsi)
+
+                for k in range(self.pyr_levels):
+                    cbf_dot = Av_list[k]*v + Bw_list[k]*w
+                    cbf_dot_alpha = cbf_dot + C_alpha*cbf_list[k]
+
+                    m = Float64(); m.data = cbf_list[k]
+                    self.pub_cbf_level_[k].publish(m)
+
+                    m2 = Float64(); m2.data = cbf_dot_alpha
+                    self.pub_cbf_dot_alpha_level_[k].publish(m2)
+
+
 
             self.linear_velocity = float(vel)
             self.angular_velocity = float(dPsi)
@@ -648,6 +657,8 @@ class MobileRobot(Node):
             self.linear_velocity = 0.0
             self.angular_velocity = 0.0
             sys.exit(1)
+        
+        
 
 
        
