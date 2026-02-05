@@ -6,10 +6,7 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 
 def generate_launch_description():
-
-    pkg_share = get_package_share_directory('ogm_cbf_kinematic_sim')
-    map_params = os.path.join(pkg_share, 'config', 'map_params.yaml')
-    
+   
 
     return LaunchDescription([
         Node(
@@ -17,12 +14,11 @@ def generate_launch_description():
             executable='map_publisher_node',
             name='map_publisher',
             output='screen',
-            parameters=[map_params],
-
+           
         ),
         Node(
             package='ogm_cbf_kinematic_sim',
-            executable='kinematic_diff_drive_sim_node',
+            executable='kinematic_afs_sim_node',
             name='sim',
             output='screen',
             

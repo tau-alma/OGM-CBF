@@ -54,7 +54,7 @@ class KinematicDiffDriveSimNode(Node):
         self.create_subscription(Twist, 'cmd_vel', self.cmd_vel_callback, 1)
 
         # Publishes odometry
-        self.odom_publisher = self.create_publisher(Odometry, 'odom', 1)
+        self.odom_publisher = self.create_publisher(Odometry, 'odom_in_map', 1)
 
         # Timer for simulation update
         self.last_time = time.time()
