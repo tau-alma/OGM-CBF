@@ -37,7 +37,7 @@ def min_pool_2x2_f32_min(a: np.ndarray) -> np.ndarray:
 def bilinear(arr, x, y , debug=False):
     H, W = arr.shape
     if x < 0 or x > W - 1 or y < 0 or y > H - 1:
-        # outside map, choose convention
+        # outside map
         return 0.0
 
     x0 = int(np.floor(x))
@@ -249,13 +249,13 @@ class MobileRobot(Node):
         # ---- map pyramid publish params ----
         self.declare_parameter('map_pyr_pub', True)
         self.declare_parameter('map_pyr_pub_hz', 1.0)
-        self.declare_parameter('map_pyr_show_raw', False)  # False: re-binarize each level (recommended)
+        self.declare_parameter('map_pyr_show_raw', False)  
 
         self.map_pyr_pub      = bool(self.get_parameter('map_pyr_pub').value)
         self.map_pyr_pub_hz   = float(self.get_parameter('map_pyr_pub_hz').value)
         self.map_pyr_show_raw = bool(self.get_parameter('map_pyr_show_raw').value)
 
-        self.map_levels_u8 = []  # list[np.uint8 HxW], what you publish
+        self.map_levels_u8 = []  # list[np.uint8 HxW]
 
         self.declare_parameter('map_draw_robot', True)
         self.declare_parameter('map_robot_gray', 128)      # visible on both 0/255
@@ -341,7 +341,7 @@ class MobileRobot(Node):
             return img_u8
 
         val = int(np.clip(self.map_robot_gray, 0, 255))
-        #r   = max(2, int(round(self.map_robot_r_px0 / (2**k))))
+        
         res_k = self.res_levels[k] if (len(self.res_levels) > k) else (self.map_resolution * (2**k))
 
         r = max(1, int(round(self.map_robot_radius_m / res_k)))   # meters -> pixels
@@ -352,7 +352,7 @@ class MobileRobot(Node):
         cv2.circle(img_u8, (cx, cy), 1, val, -1)
 
         if self.map_draw_heading:
-            #L = max(3, int(round(self.map_heading_len_px0 / (2**k))))
+            
             x2 = int(round(cx + math.cos(self.yaw) * L))
             y2 = int(round(cy - math.sin(self.yaw) * L))  # image y is down
             cv2.line(img_u8, (cx, cy), (x2, y2), val, 1)
@@ -422,7 +422,7 @@ class MobileRobot(Node):
         """Publish the velocity as a Twist message."""
        #twist in ego frame
         msg = Twist()
-        msg.linear.x = self.linear_velocity # or use self.linear_velocity if available
+        msg.linear.x = self.linear_velocity 
         msg.linear.y = 0.0
         msg.angular.z = self.angular_velocity
         self.twist_publisher_.publish(msg)
@@ -507,9 +507,7 @@ class MobileRobot(Node):
         sdf0_px, _, _ = signed_sdf_and_grad_from_free(free0)          # compute ONCE
         sdf0_m = sdf0_px * self.map_resolution                        # meters
 
-        # sdf_m_pyr = [sdf0_m]
-        # for k in range(1, K):
-        #     sdf_m_pyr.append(min_pool_2x2_f32_min(sdf_m_pyr[-1]))     # conservative
+        
         sdf_m_pyr = [sdf0_m]
 
         if self.sdf_pyr_use_pyrdown:
@@ -519,7 +517,7 @@ class MobileRobot(Node):
                 sdf_m_pyr.append(x.astype(np.float32))
         else:
             for _ in range(1, K):
-                sdf_m_pyr.append(min_pool_2x2_f32_min(sdf_m_pyr[-1]))  # your conservative version
+                sdf_m_pyr.append(min_pool_2x2_f32_min(sdf_m_pyr[-1]))  # subsample by min pooling (more conservative, no smoothing)
 
 
         # reset lists
@@ -534,8 +532,7 @@ class MobileRobot(Node):
             res_k = self.map_resolution * (2**k)
             sdf_px = (sdf_m_pyr[k] / res_k).astype(np.float32)
 
-            # OPTIONAL conservative interpolation margin (helps bilinear not overestimate):
-            # sdf_px -= (0.5*np.sqrt(2))  # == subtract 0.5*sqrt(2)*res_k meters then /res_k
+            
 
             dy, dx = np.gradient(sdf_px)
             norm = np.sqrt(dx**2 + dy**2)
@@ -562,71 +559,7 @@ class MobileRobot(Node):
             self.res_levels.append(res_k)
 
 
-        # k = int(self.obs_inflate_p)
-        # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2*k + 1, 2*k + 1))
-        # map_img = cv2.erode(map_img, kernel, iterations=1)
-
-        # K = self.pyr_levels
-        # #free_k = map_img.copy()
-
-        # #free_pyr = gaussian_pyr_down(map_img, K=self.pyr_levels)
-        # free0 = ((map_img > 127).astype(np.uint8) * 255)  # ensure free=255, obs=0
-        # free_pyr = [free0]
-        # for _ in range(1, self.pyr_levels):
-        #     free_pyr.append(min_pool_2x2_free(free_pyr[-1]))  # conservative: obstacles grow
-
-
-        # self.sdf_levels.clear()
-        # self.dsdfx_levels.clear()
-        # self.dsdfy_levels.clear()
-        # self.res_levels.clear()
-
-        # self.ddsdf_xx_levels.clear()
-        # self.ddsdf_xy_levels.clear()
-        # self.ddsdf_yx_levels.clear()
-        # self.ddsdf_yy_levels.clear()
-        # self.map_levels_u8.clear()
-
-
-        # for k, free_k in enumerate(free_pyr):
-        #     self.map_levels_u8.append(free_k)  # already mono8, binary
-        #     sdf_px, dsdfx, dsdfy = signed_sdf_and_grad_from_free(free_k)
-
-        # # for k, img in enumerate(free_pyr):
-
-        # #     lvl = img.astype(np.uint8) if self.map_pyr_show_raw else ((img > 127).astype(np.uint8) * 255)
-        # #     self.map_levels_u8.append(lvl)
-            
-        # #     free_k = ((img > 127).astype(np.uint8) * 255)
-        # #     sdf_px, dsdfx, dsdfy = signed_sdf_and_grad_from_free(free_k)
-
-        #     # Hessian in pixel space 
-        #     edges_y, edges_x = np.gradient(sdf_px)
-        #     # norm = np.sqrt(edges_x**2 + edges_y**2)
-        #     # edges_x /= norm + 1e-6
-        #     # edges_y /= norm + 1e-6
-
-        #     # we only get derivative of normalized dsdf because that is what we use in CBF
-
-        #     gyy, gyx = np.gradient(edges_y)
-        #     gxy, gxx = np.gradient(edges_x)
-
-
-        #     ddsdf_xx = gxx
-        #     ddsdf_yy = gyy
-        #     ddsdf_xy = -gxy
-        #     ddsdf_yx = -gyx
-
-        #     self.ddsdf_xx_levels.append(ddsdf_xx.astype(np.float32))
-        #     self.ddsdf_xy_levels.append(ddsdf_xy.astype(np.float32))
-        #     self.ddsdf_yx_levels.append(ddsdf_yx.astype(np.float32))
-        #     self.ddsdf_yy_levels.append(ddsdf_yy.astype(np.float32))
-
-        #     self.sdf_levels.append(sdf_px)
-        #     self.dsdfx_levels.append(dsdfx)
-        #     self.dsdfy_levels.append(dsdfy)
-        #     self.res_levels.append(self.map_resolution * (2**k))
-        #     #free_k = min_pool_2x2_free(free_k)   # next level
+       
             
 
 
@@ -654,12 +587,12 @@ class MobileRobot(Node):
             # print(f"grad_at_world_level normalize: gx={gx:.6f}, gy={gy:.6f}, norm={norm:.6f}")
             gx /= norm + 1e-6
             gy /= norm + 1e-6
-            return gx, gy  # ~ ∂φ/∂x, ∂φ/∂y (unitless)
+            return gx, gy  
         
         gx = bilinear(dsx, px, py)
         gy = bilinear(dsy, px, py)
         
-        return gx, gy  # ~ ∂φ/∂x, ∂φ/∂y (m/m)
+        return gx, gy 
     
 
     def hessian_at_world_level(self, k, xw, yw):
