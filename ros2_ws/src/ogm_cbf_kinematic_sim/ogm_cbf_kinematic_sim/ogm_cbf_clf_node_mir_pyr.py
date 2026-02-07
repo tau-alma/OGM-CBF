@@ -25,6 +25,14 @@ from rcl_interfaces.msg import SetParametersResult
 from std_msgs.msg import Float64
 
 
+def min_pool_2x2_f32_min(a: np.ndarray) -> np.ndarray:
+    # conservative for SDF: take min (more unsafe)
+    H, W = a.shape
+    Hp = H + (H % 2)
+    Wp = W + (W % 2)
+    pad = np.pad(a, ((0, Hp-H), (0, Wp-W)), mode='edge')  # avoid fake -inf borders
+    blk = pad.reshape(Hp//2, 2, Wp//2, 2)
+    return blk.min(axis=(1,3)).astype(np.float32)
 
 def bilinear(arr, x, y , debug=False):
     H, W = arr.shape
@@ -192,9 +200,12 @@ class MobileRobot(Node):
         self.map_origin_y = 0.0
         self.map_erode = np.zeros((self.map_height, self.map_width), dtype=np.uint8)
 
-        self.declare_parameter('pyr_levels', 5)
-
+        self.declare_parameter('pyr_levels', 4)
         self.pyr_levels = self.get_parameter('pyr_levels').value
+
+        self.declare_parameter('sdf_pyr_use_pyrdown', True)
+        self.sdf_pyr_use_pyrdown = bool(self.get_parameter('sdf_pyr_use_pyrdown').value)
+
         self.sdf_levels = []         # list[np.ndarray float32]  (pixels)
         self.dsdfx_levels = []       # list[np.ndarray float32]
         self.dsdfy_levels = []
@@ -234,6 +245,50 @@ class MobileRobot(Node):
         self.sdf_arrow_step= int(self.get_parameter('sdf_arrow_step').value)
         self.sdf_arrow_len = float(self.get_parameter('sdf_arrow_len').value)
 
+
+        # ---- map pyramid publish params ----
+        self.declare_parameter('map_pyr_pub', True)
+        self.declare_parameter('map_pyr_pub_hz', 1.0)
+        self.declare_parameter('map_pyr_show_raw', False)  # False: re-binarize each level (recommended)
+
+        self.map_pyr_pub      = bool(self.get_parameter('map_pyr_pub').value)
+        self.map_pyr_pub_hz   = float(self.get_parameter('map_pyr_pub_hz').value)
+        self.map_pyr_show_raw = bool(self.get_parameter('map_pyr_show_raw').value)
+
+        self.map_levels_u8 = []  # list[np.uint8 HxW], what you publish
+
+        self.declare_parameter('map_draw_robot', True)
+        self.declare_parameter('map_robot_gray', 128)      # visible on both 0/255
+        self.declare_parameter('map_robot_r_px0', 4)       # radius at level0
+        self.declare_parameter('map_draw_heading', True)
+        self.declare_parameter('map_heading_len_px0', 10)  # len at level0
+
+        self.map_draw_robot      = bool(self.get_parameter('map_draw_robot').value)
+        self.map_robot_gray      = int(self.get_parameter('map_robot_gray').value)
+        self.map_robot_r_px0     = int(self.get_parameter('map_robot_r_px0').value)
+        self.map_draw_heading    = bool(self.get_parameter('map_draw_heading').value)
+        self.map_heading_len_px0 = int(self.get_parameter('map_heading_len_px0').value)
+
+        self.declare_parameter('map_robot_radius_m', 0.25)   # 25cm (set to your robot)
+        self.declare_parameter('map_heading_len_m',  0.50)   # 50cm arrow
+
+        self.map_robot_radius_m = float(self.get_parameter('map_robot_radius_m').value)
+        self.map_heading_len_m  = float(self.get_parameter('map_heading_len_m').value)
+
+
+        self.have_odom = False
+
+
+        self.publisher_map_levels_ = [
+            self.create_publisher(Image, f'/map_level_{k}', 1)
+            for k in range(self.pyr_levels)
+        ]
+        self.map_timer_ = self.create_timer(
+            1.0 / max(1e-3, self.map_pyr_pub_hz),
+            self.publish_map_levels
+        )
+
+
         
 
         self.publisher_sdf_levels_ = [
@@ -253,7 +308,73 @@ class MobileRobot(Node):
             if p.name == 'sdf_pub_hz':     self.sdf_pub_hz = float(p.value)
             if p.name == 'sdf_arrow_step': self.sdf_arrow_step = int(p.value)
             if p.name == 'sdf_arrow_len':  self.sdf_arrow_len = float(p.value)
+            if p.name == 'map_pyr_pub':      self.map_pyr_pub = bool(p.value)
+            if p.name == 'map_pyr_pub_hz':   self.map_pyr_pub_hz = float(p.value)
+            if p.name == 'map_pyr_show_raw': self.map_pyr_show_raw = bool(p.value)
+
+            if p.name == 'map_draw_robot':      self.map_draw_robot = bool(p.value)
+            if p.name == 'map_robot_gray':      self.map_robot_gray = int(p.value)
+            if p.name == 'map_robot_r_px0':     self.map_robot_r_px0 = int(p.value)
+            if p.name == 'map_draw_heading':    self.map_draw_heading = bool(p.value)
+            if p.name == 'map_heading_len_px0': self.map_heading_len_px0 = int(p.value)
+            if p.name == 'map_robot_radius_m': self.map_robot_radius_m = float(p.value)
+            if p.name == 'map_heading_len_m':  self.map_heading_len_m  = float(p.value)
+
+            if p.name == 'sdf_pyr_use_pyrdown': self.sdf_pyr_use_pyrdown = bool(p.value)
+
+
+
+
         return SetParametersResult(successful=True)
+    
+    def _draw_robot_on_level(self, img_u8: np.ndarray, k: int) -> np.ndarray:
+        if (not self.have_odom):
+            return img_u8
+        H, W = img_u8.shape
+        res = self.res_levels[k] if (len(self.res_levels) > k) else (self.map_resolution * (2**k))
+
+        px, py = world_to_pixel(self.x_real, self.y_real, resolution=res,
+                                origin_x=self.map_origin_x, origin_y=self.map_origin_y,
+                                img_height=H, continuous=True)
+        cx, cy = int(round(px)), int(round(py))
+        if not (0 <= cx < W and 0 <= cy < H):
+            return img_u8
+
+        val = int(np.clip(self.map_robot_gray, 0, 255))
+        #r   = max(2, int(round(self.map_robot_r_px0 / (2**k))))
+        res_k = self.res_levels[k] if (len(self.res_levels) > k) else (self.map_resolution * (2**k))
+
+        r = max(1, int(round(self.map_robot_radius_m / res_k)))   # meters -> pixels
+        L = max(1, int(round(self.map_heading_len_m  / res_k)))   # meters -> pixels
+
+        
+        cv2.circle(img_u8, (cx, cy), r, val, 1)
+        cv2.circle(img_u8, (cx, cy), 1, val, -1)
+
+        if self.map_draw_heading:
+            #L = max(3, int(round(self.map_heading_len_px0 / (2**k))))
+            x2 = int(round(cx + math.cos(self.yaw) * L))
+            y2 = int(round(cy - math.sin(self.yaw) * L))  # image y is down
+            cv2.line(img_u8, (cx, cy), (x2, y2), val, 1)
+
+        return img_u8
+
+    
+    def publish_map_levels(self):
+        if (not self.map_pyr_pub) or (len(self.map_levels_u8) == 0):
+            return
+
+        stamp = self.time_map.to_msg() if isinstance(self.time_map, Time) else self.get_clock().now().to_msg()
+
+        for k in range(min(self.pyr_levels, len(self.map_levels_u8))):
+            #img = self.map_levels_u8[k]
+            img = self.map_levels_u8[k].copy()
+            if self.map_draw_robot:
+                img = self._draw_robot_on_level(img, k)
+            msg = self.bridge.cv2_to_imgmsg(img, encoding='mono8')
+            msg.header.stamp = stamp
+            self.publisher_map_levels_[k].publish(msg)
+
 
     def sdf_to_rgb(self, sdf_px: np.ndarray) -> np.ndarray:
         s = np.nan_to_num(sdf_px, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
@@ -357,8 +478,9 @@ class MobileRobot(Node):
         # Use the map's timestamp if available
         img_msg.header.stamp = self.time_map.to_msg() if isinstance(self.time_map, Time) else self.get_clock().now().to_msg()
         self.publisher_erode_image_.publish(img_msg)
-       
 
+
+       
 
     def listener_callback_map(self, msg: Image):
         """
@@ -373,59 +495,138 @@ class MobileRobot(Node):
 
         #map_img = cv2.bitwise_not(map_img)  # Invert colors: obstacles=255, free=0
         map_img = 255 - map_img  # Invert colors: obstacles=255, free=0
-
-        k = int(self.obs_inflate_p)
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2*k + 1, 2*k + 1))
-        map_img = cv2.erode(map_img, kernel, iterations=1)
-
         K = self.pyr_levels
-        #free_k = map_img.copy()
 
-        free_pyr = gaussian_pyr_down(map_img, K=self.pyr_levels)
+        # --- map pyramid (only for /map_level_k publish) ---
+        free0 = ((map_img > 127).astype(np.uint8) * 255)  # free=255, obs=0
+        free_pyr = [free0]
+        for _ in range(1, K):
+            free_pyr.append(min_pool_2x2_free(free_pyr[-1]))
 
-        self.sdf_levels.clear()
-        self.dsdfx_levels.clear()
-        self.dsdfy_levels.clear()
-        self.res_levels.clear()
+        # --- SDF pyramid (build from level0 SDF) ---
+        sdf0_px, _, _ = signed_sdf_and_grad_from_free(free0)          # compute ONCE
+        sdf0_m = sdf0_px * self.map_resolution                        # meters
 
-        self.ddsdf_xx_levels.clear()
-        self.ddsdf_xy_levels.clear()
-        self.ddsdf_yx_levels.clear()
-        self.ddsdf_yy_levels.clear()
+        # sdf_m_pyr = [sdf0_m]
+        # for k in range(1, K):
+        #     sdf_m_pyr.append(min_pool_2x2_f32_min(sdf_m_pyr[-1]))     # conservative
+        sdf_m_pyr = [sdf0_m]
 
-
-        for k, img in enumerate(free_pyr):
-            
-            free_k = ((img > 127).astype(np.uint8) * 255)
-            sdf_px, dsdfx, dsdfy = signed_sdf_and_grad_from_free(free_k)
-
-            # Hessian in pixel space 
-            edges_y, edges_x = np.gradient(sdf_px)
-            norm = np.sqrt(edges_x**2 + edges_y**2)
-            edges_x /= norm + 1e-6
-            edges_y /= norm + 1e-6
-
-            # we only get derivative of normalized dsdf because that is what we use in CBF
-
-            gyy, gyx = np.gradient(edges_y)
-            gxy, gxx = np.gradient(edges_x)
+        if self.sdf_pyr_use_pyrdown:
+            x = sdf0_m
+            for _ in range(1, K):
+                x = cv2.pyrDown(x)              # Gaussian+downsample on float32 meters
+                sdf_m_pyr.append(x.astype(np.float32))
+        else:
+            for _ in range(1, K):
+                sdf_m_pyr.append(min_pool_2x2_f32_min(sdf_m_pyr[-1]))  # your conservative version
 
 
+        # reset lists
+        self.sdf_levels.clear(); self.dsdfx_levels.clear(); self.dsdfy_levels.clear()
+        self.ddsdf_xx_levels.clear(); self.ddsdf_xy_levels.clear()
+        self.ddsdf_yx_levels.clear(); self.ddsdf_yy_levels.clear()
+        self.res_levels.clear(); self.map_levels_u8.clear()
+
+        for k in range(K):
+            self.map_levels_u8.append(free_pyr[k])
+
+            res_k = self.map_resolution * (2**k)
+            sdf_px = (sdf_m_pyr[k] / res_k).astype(np.float32)
+
+            # OPTIONAL conservative interpolation margin (helps bilinear not overestimate):
+            # sdf_px -= (0.5*np.sqrt(2))  # == subtract 0.5*sqrt(2)*res_k meters then /res_k
+
+            dy, dx = np.gradient(sdf_px)
+            norm = np.sqrt(dx**2 + dy**2)
+            dx /= norm + 1e-6
+            dy /= norm + 1e-6
+
+            dsdfx = dx.astype(np.float32)
+            dsdfy = (-dy).astype(np.float32)
+
+            gyy, gyx = np.gradient(dy)
+            gxy, gxx = np.gradient(dx)
             ddsdf_xx = gxx
             ddsdf_yy = gyy
             ddsdf_xy = -gxy
             ddsdf_yx = -gyx
 
+            self.sdf_levels.append(sdf_px)
+            self.dsdfx_levels.append(dsdfx)
+            self.dsdfy_levels.append(dsdfy)
             self.ddsdf_xx_levels.append(ddsdf_xx.astype(np.float32))
             self.ddsdf_xy_levels.append(ddsdf_xy.astype(np.float32))
             self.ddsdf_yx_levels.append(ddsdf_yx.astype(np.float32))
             self.ddsdf_yy_levels.append(ddsdf_yy.astype(np.float32))
+            self.res_levels.append(res_k)
 
-            self.sdf_levels.append(sdf_px)
-            self.dsdfx_levels.append(dsdfx)
-            self.dsdfy_levels.append(dsdfy)
-            self.res_levels.append(self.map_resolution * (2**k))
-            #free_k = min_pool_2x2_free(free_k)   # next level
+
+        # k = int(self.obs_inflate_p)
+        # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2*k + 1, 2*k + 1))
+        # map_img = cv2.erode(map_img, kernel, iterations=1)
+
+        # K = self.pyr_levels
+        # #free_k = map_img.copy()
+
+        # #free_pyr = gaussian_pyr_down(map_img, K=self.pyr_levels)
+        # free0 = ((map_img > 127).astype(np.uint8) * 255)  # ensure free=255, obs=0
+        # free_pyr = [free0]
+        # for _ in range(1, self.pyr_levels):
+        #     free_pyr.append(min_pool_2x2_free(free_pyr[-1]))  # conservative: obstacles grow
+
+
+        # self.sdf_levels.clear()
+        # self.dsdfx_levels.clear()
+        # self.dsdfy_levels.clear()
+        # self.res_levels.clear()
+
+        # self.ddsdf_xx_levels.clear()
+        # self.ddsdf_xy_levels.clear()
+        # self.ddsdf_yx_levels.clear()
+        # self.ddsdf_yy_levels.clear()
+        # self.map_levels_u8.clear()
+
+
+        # for k, free_k in enumerate(free_pyr):
+        #     self.map_levels_u8.append(free_k)  # already mono8, binary
+        #     sdf_px, dsdfx, dsdfy = signed_sdf_and_grad_from_free(free_k)
+
+        # # for k, img in enumerate(free_pyr):
+
+        # #     lvl = img.astype(np.uint8) if self.map_pyr_show_raw else ((img > 127).astype(np.uint8) * 255)
+        # #     self.map_levels_u8.append(lvl)
+            
+        # #     free_k = ((img > 127).astype(np.uint8) * 255)
+        # #     sdf_px, dsdfx, dsdfy = signed_sdf_and_grad_from_free(free_k)
+
+        #     # Hessian in pixel space 
+        #     edges_y, edges_x = np.gradient(sdf_px)
+        #     # norm = np.sqrt(edges_x**2 + edges_y**2)
+        #     # edges_x /= norm + 1e-6
+        #     # edges_y /= norm + 1e-6
+
+        #     # we only get derivative of normalized dsdf because that is what we use in CBF
+
+        #     gyy, gyx = np.gradient(edges_y)
+        #     gxy, gxx = np.gradient(edges_x)
+
+
+        #     ddsdf_xx = gxx
+        #     ddsdf_yy = gyy
+        #     ddsdf_xy = -gxy
+        #     ddsdf_yx = -gyx
+
+        #     self.ddsdf_xx_levels.append(ddsdf_xx.astype(np.float32))
+        #     self.ddsdf_xy_levels.append(ddsdf_xy.astype(np.float32))
+        #     self.ddsdf_yx_levels.append(ddsdf_yx.astype(np.float32))
+        #     self.ddsdf_yy_levels.append(ddsdf_yy.astype(np.float32))
+
+        #     self.sdf_levels.append(sdf_px)
+        #     self.dsdfx_levels.append(dsdfx)
+        #     self.dsdfy_levels.append(dsdfy)
+        #     self.res_levels.append(self.map_resolution * (2**k))
+        #     #free_k = min_pool_2x2_free(free_k)   # next level
             
 
 
@@ -482,6 +683,8 @@ class MobileRobot(Node):
         """
         Receive the vehicle's odometry and update the state.
         """
+        self.have_odom = True
+
         t_ns = Time.from_msg(msg.header.stamp).nanoseconds
         if self.prev_odom_t_ns is None:
             self.dt = 1.0 / controller_frequency
@@ -535,12 +738,12 @@ class MobileRobot(Node):
         x_perp = np.array([-np.sin(yaw), np.cos(yaw)]) 
 
 
-        x = np.around(x, decimals=6)
-        x_perp = np.around(x_perp, decimals=6)
-        g = np.around(g, decimals=6)
-        sdf = np.around(sdf, decimals=6)
-        dsdf_x = np.around(dsdf_x, decimals=6)
-        dsdf_y = np.around(dsdf_y, decimals=6)
+        x = np.around(x, decimals=16)
+        x_perp = np.around(x_perp, decimals=16)
+        g = np.around(g, decimals=16)
+        sdf = np.around(sdf, decimals=16)
+        dsdf_x = np.around(dsdf_x, decimals=16)
+        dsdf_y = np.around(dsdf_y, decimals=16)
 
 
         cbf = sdf + l_s + l_a*(g @ x)                      

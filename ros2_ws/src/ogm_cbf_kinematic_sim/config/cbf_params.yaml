@@ -25,3 +25,5 @@ CBF_Controller_Node:
 
     obs_inflate_p: 7.0
 
+    map_pyr_pub: true
+

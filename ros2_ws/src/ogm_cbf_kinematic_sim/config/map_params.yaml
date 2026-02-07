@@ -1,3 +1,4 @@
 map_publisher:
   ros__parameters:
     map_path: /home/golnaz/workspace/projects/work/OGM-CBF/ros2_ws/src/ogm_cbf_kinematic_sim/ogm_cbf_kinematic_sim/map/festia_map/full_festia.png
+#     map_path: /home/golnaz/workspace/projects/work/OGM-CBF/ros2_ws/src/ogm_cbf_kinematic_sim/ogm_cbf_kinematic_sim/map/arbitrary_maps/hard.png
