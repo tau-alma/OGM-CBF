@@ -23,6 +23,8 @@ import sys
 from ogm_cbf_kinematic_sim.conf import controller_frequency, simulator_frequency
 from rcl_interfaces.msg import SetParametersResult
 from std_msgs.msg import Float64
+from rclpy.qos import qos_profile_sensor_data
+
 
 
 def min_pool_2x2_f32_min(a: np.ndarray) -> np.ndarray:
@@ -124,7 +126,7 @@ class MobileRobot(Node):
     def __init__(self, state=[0,0,0], timestep=0.1):
         super().__init__('CBF_Controller_Node')
         self.vehicle_info = self.create_subscription(Odometry, "odom_in_map", self.vehicle_odom_callback, 1)
-        self.subscription_2 = self.create_subscription(Image, '/ogm/imgmap', self.listener_callback_map, 1)
+        self.subscription_2 = self.create_subscription(Image, '/ogm/imgmap', self.listener_callback_map, qos_profile_sensor_data)
         self.publisher_image_ = self.create_publisher(Image, '/cbf_image', 1)
         self.contour_timer_ = self.create_timer(1.0, self.publish_image)
         self.bridge = CvBridge()
