@@ -86,7 +86,7 @@ def generate_launch_description():
                 {"sensor_model_min_dist" : 0.05},
                 {"sensor_model_low_crop_dist" : 0.05},
                 {"sensor_model_max_dist" : 30.00},
-                {"sensor_model_high_crop_dist" : 5.0},
+                {"sensor_model_high_crop_dist" : 20.0},
                 ],
         )
 

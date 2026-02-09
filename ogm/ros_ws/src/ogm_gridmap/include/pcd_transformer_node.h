@@ -172,11 +172,11 @@ class TransformerNode  : public rclcpp::Node
         rclcpp::Time odom_stamp(msg_odom->header.stamp);
         rclcpp::Time pcd_stamp(msg_pcd->header.stamp);
 
-        RCLCPP_INFO(this->get_logger(), "sync odom-pcd at %lf--%lf (%lf)",
+        /*RCLCPP_INFO(this->get_logger(), "sync odom-pcd at %lf--%lf (%lf)",
             odom_stamp.seconds(),
             pcd_stamp.seconds(),
             odom_stamp.seconds() - pcd_stamp.seconds()
-	    );
+	    );*/
         
 	Eigen::Matrix4f T_odom2link = get_T_matrix(msg_odom);
  
