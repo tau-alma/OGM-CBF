@@ -181,7 +181,7 @@ class MobileRobot(Node):
         self.linear_velocity = self.angular_velocity = 0.0
 
         # Controller hyperparameters
-        self.declare_parameter('C_alpha',     0.9)
+        self.declare_parameter('C_alpha',     0.3)
         self.declare_parameter('Vmin',       -0.5)
         self.declare_parameter('Vmax',        0.5)
         self.declare_parameter('Wmin', -0.25*np.pi)
@@ -202,7 +202,7 @@ class MobileRobot(Node):
         self.map_origin_y = 0.0
         self.map_erode = np.zeros((self.map_height, self.map_width), dtype=np.uint8)
 
-        self.declare_parameter('pyr_levels', 4)
+        self.declare_parameter('pyr_levels', 3)
         self.pyr_levels = self.get_parameter('pyr_levels').value
 
         self.declare_parameter('sdf_pyr_use_pyrdown', True)
@@ -230,7 +230,7 @@ class MobileRobot(Node):
         ]
 
         self.declare_parameter('obs_inflate_p', 7.0)  # meters, 0 disables
-        self.obs_inflate_p = float(self.get_parameter('obs_inflate_p').value)
+        self.obs_inflate_p = int(self.get_parameter('obs_inflate_p').value)
 
 
 
@@ -497,6 +497,10 @@ class MobileRobot(Node):
 
         #map_img = cv2.bitwise_not(map_img)  # Invert colors: obstacles=255, free=0
         map_img = 255 - map_img  # Invert colors: obstacles=255, free=0
+        k = self.obs_inflate_p
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2*k + 1, 2*k + 1))
+        map_img = cv2.erode(map_img, kernel, iterations=1)
+
         K = self.pyr_levels
 
         # --- map pyramid (only for /map_level_k publish) ---
@@ -743,7 +747,7 @@ class MobileRobot(Node):
             cbf, dcbf_x, dcbf_y, dcbf_yaw = self.cbf_terms_level(k, xw, yw, yaw)
 
             
-            self.get_logger().info(f"Level {k}: CBF={cbf:.6f}")
+            #self.get_logger().info(f"Level {k}: CBF={cbf:.6f}")
             if cbf < 0.0:
                 self.get_logger().warn(f"*** WARNING: CBF level {k} is negative: {cbf:.6f} ***")
                 #sys.exit(1)
