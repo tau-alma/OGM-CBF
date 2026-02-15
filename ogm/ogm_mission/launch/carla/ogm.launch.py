@@ -24,6 +24,48 @@ def generate_launch_description():
         description='tf handler namespace'
     )
 
+    rectify = ComposableNodeContainer(
+            name='imgproc',
+            namespace=namespace,
+            package='rclcpp_components',
+            executable='component_container',
+            composable_node_descriptions=[
+                ComposableNode(
+                    package='image_proc',
+                    plugin='image_proc::RectifyNode',
+                    name='rectify_node',
+                    namespace=namespace,
+                    parameters=[{'queue_size': 10}],
+                    remappings=[
+                        ('image_rect', '/carla/ego_vehicle/rgb_depth/image_rect_raw'),
+                        ('image', '/carla/ego_vehicle/rgb_depth/image_raw'),
+                    ]
+                ),
+            ],
+    )
+
+
+    depth_2_pcd = ComposableNodeContainer(
+            name='pcl_remote',
+            namespace=namespace,
+            package='rclcpp_components',
+            executable='component_container',
+            composable_node_descriptions=[
+                ComposableNode(
+                    package='depth_image_proc',
+                    plugin='depth_image_proc::PointCloudXyzNode',
+                    name='point_cloud_xyz',
+                    namespace=namespace,
+                    parameters=[{'queue_size': 10}],
+                    remappings=[
+                        ('image_rect', '/carla/ego_vehicle/rgb_depth/image_rect_raw'),
+                        ('camera_info', '/carla/ego_vehicle/rgb_depth/camera_info'),
+                        ('points', '/carla/ego_vehicle/rgb_depth/points')
+                    ]
+                ),
+            ],
+            output='screen',
+    )
 
     velarray_pcd_2_map_pcd = Node(
             package='ogm_gridmap',
@@ -32,7 +74,7 @@ def generate_launch_description():
             output={'both': 'screen'},
             namespace=LaunchConfiguration('ns'),
             remappings=[
-                ('pcd_in','/carla/ego_vehicle/lidar'),
+                ('pcd_in','/carla/ego_vehicle/rgb_depth/lidar'),
                 ('pcd_out','points/in_map'),
                 ('odom','/odom_in_map'),
                 ],
@@ -75,6 +117,8 @@ def generate_launch_description():
     return LaunchDescription([
         _use_sim_time,
         _ns,
+        rectify,
+        depth_to_pcd,
         velarray_pcd_2_map_pcd,
         gridmap,
     ])
