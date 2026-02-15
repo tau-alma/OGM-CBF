@@ -29,19 +29,18 @@ def generate_launch_description():
             output='screen' ,
             namespace=LaunchConfiguration('ns'),
             remappings=[
-                ('odom_in' , '/carla/ego_vehicle/odometry
- '),
+                ('odom_in' , '/carla/ego_vehicle/odometry'),
                 ('odom_out' , '/odom_in_map'),
                 ],
             parameters=[
                 {"use_sim_time" : LaunchConfiguration('use_sim_time')},
                 {'map_frame' : 'map'},
-                {'link_frame' : 'base_link'},
+                {'link_frame' : 'ego_vehicle'},
                 {'offset_to_link' : False},
                 {'from_pose' : False},
                 {'from_params' : True},
-                {'fixed_offset_x' : -25.},
-                {'fixed_offset_y' : 25.},
+                {'fixed_offset_x' : 65.},
+                {'fixed_offset_y' : 135.},
                 ],
             ) 
 
@@ -63,7 +62,7 @@ def generate_launch_description():
             name="sbr_base_link_2_front_laser_link",
             arguments=["2.0", "0.0", "0.3",
                        "0.", "0.", "0.0",
-                       "base_link", "velarray"],
+                       "ego_vehicle", "ego_vehicle/lidar"],
             namespace=LaunchConfiguration('ns'),
             parameters=[
                 {"use_sim_time" : LaunchConfiguration('use_sim_time')},
