@@ -56,13 +56,13 @@ def generate_launch_description():
                 ],
             ) 
 
-    sbr_base_link_2_velarray = Node(
+    sbr_base_link_2_sensor = Node(
             package="tf2_ros",
             executable="static_transform_publisher",
             name="sbr_base_link_2_front_laser_link",
-            arguments=["2.0", "0.0", "0.3",
-                       "0.", "0.", "0.0",
-                       "ego_vehicle", "ego_vehicle/lidar"],
+            arguments=["2.5", "0.0", "0.5",
+                       "-0.5", "0.5", "-0.5", "0.5",
+                       "ego_vehicle", "ego_vehicle/rgb_depth"],
             namespace=LaunchConfiguration('ns'),
             parameters=[
                 {"use_sim_time" : LaunchConfiguration('use_sim_time')},
@@ -75,5 +75,5 @@ def generate_launch_description():
         _ns,
         offset_odom,
         odom_2_tf,
-        sbr_base_link_2_velarray,
+        sbr_base_link_2_sensor,
     ])

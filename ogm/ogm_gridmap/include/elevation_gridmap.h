@@ -89,6 +89,7 @@ class ElevationGridmap
     float origin_y;
 
     float traversable_slope;
+    float crop_z_max;
 
     Eigen::Matrix<KalmanCellOccupancy, Eigen::Dynamic, Eigen::Dynamic> gridmap;
 
@@ -160,7 +161,9 @@ class ElevationGridmap
         int i, j;
         std::tie(i, j) = coord2sub(pt.x, pt.y);
         //RCLCPP_INFO(this->get_logger(), "%d %d %f", i, j, pt.z);
-        if (is_in_bounds(i, j) && !is_in_clearance(pt)) gridmap(i ,j).update(z); 
+        if (is_in_bounds(i, j) 
+	    && !is_in_clearance(pt)
+	    && (z < crop_z_max)) gridmap(i ,j).update(z); 
       }
 
       for (uint32_t i = 0; i < width; ++i)
@@ -211,7 +214,12 @@ class ElevationGridmap
             // 
             for (float z_vis = z; z_vis > vis_ground; z_vis -= cellsize)
             {
-                pcl::PointXYZI pt_vis(x, y, z_vis, p_obs);
+                //pcl::PointXYZI pt_vis(x, y, z_vis, p_obs);
+                pcl::PointXYZI pt_vis;
+		pt_vis.x = x;
+		pt_vis.y = y;
+		pt_vis.z = z_vis;
+		pt_vis.intensity = p_obs;
                 xyz.push_back(pt_vis);
             }
           }
@@ -279,11 +287,13 @@ class ElevationGridmap
     ElevationGridmap(
         float _cellsize,
         uint32_t _height, uint32_t _width,
-        float _traversable_slope
+        float _traversable_slope,
+        float _crop_z_max
         )
     {
       cellsize = _cellsize;
       traversable_slope = _traversable_slope;
+      crop_z_max = _crop_z_max;
 
       height = _height;
       width = _width;

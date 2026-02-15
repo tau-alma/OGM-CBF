@@ -5,7 +5,8 @@ import yaml
 from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
-from launch_ros.actions import Node
+from launch_ros.actions import Node, ComposableNodeContainer
+from launch_ros.descriptions import ComposableNode
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 
@@ -26,7 +27,7 @@ def generate_launch_description():
 
     rectify = ComposableNodeContainer(
             name='imgproc',
-            namespace=namespace,
+            namespace=LaunchConfiguration('ns'),
             package='rclcpp_components',
             executable='component_container',
             composable_node_descriptions=[
@@ -34,11 +35,15 @@ def generate_launch_description():
                     package='image_proc',
                     plugin='image_proc::RectifyNode',
                     name='rectify_node',
-                    namespace=namespace,
-                    parameters=[{'queue_size': 10}],
+                    namespace=LaunchConfiguration('ns'),
+                    parameters=[
+                        {"use_sim_time" : LaunchConfiguration('use_sim_time')},
+                        {'queue_size': 10}
+                        ],
                     remappings=[
-                        ('image_rect', '/carla/ego_vehicle/rgb_depth/image_rect_raw'),
-                        ('image', '/carla/ego_vehicle/rgb_depth/image_raw'),
+                        ('image_rect', '/carla/ego_vehicle/rgb_depth/image_rect'),
+                        ('camera_info', '/carla/ego_vehicle/rgb_depth/camera_info'),
+                        ('image', '/carla/ego_vehicle/rgb_depth/image'),
                     ]
                 ),
             ],
@@ -47,7 +52,7 @@ def generate_launch_description():
 
     depth_2_pcd = ComposableNodeContainer(
             name='pcl_remote',
-            namespace=namespace,
+            namespace=LaunchConfiguration('ns'),
             package='rclcpp_components',
             executable='component_container',
             composable_node_descriptions=[
@@ -55,11 +60,15 @@ def generate_launch_description():
                     package='depth_image_proc',
                     plugin='depth_image_proc::PointCloudXyzNode',
                     name='point_cloud_xyz',
-                    namespace=namespace,
-                    parameters=[{'queue_size': 10}],
+                    namespace=LaunchConfiguration('ns'),
+                    parameters=[
+                        {"use_sim_time" : LaunchConfiguration('use_sim_time')},
+                        {'queue_size': 10}
+                        ],
                     remappings=[
-                        ('image_rect', '/carla/ego_vehicle/rgb_depth/image_rect_raw'),
+                        ('image_rect', '/carla/ego_vehicle/rgb_depth/image_rect'),
                         ('camera_info', '/carla/ego_vehicle/rgb_depth/camera_info'),
+                        ('/ogm/camera_info', '/carla/ego_vehicle/rgb_depth/camera_info'),
                         ('points', '/carla/ego_vehicle/rgb_depth/points')
                     ]
                 ),
@@ -74,7 +83,7 @@ def generate_launch_description():
             output={'both': 'screen'},
             namespace=LaunchConfiguration('ns'),
             remappings=[
-                ('pcd_in','/carla/ego_vehicle/rgb_depth/lidar'),
+                ('pcd_in','/carla/ego_vehicle/rgb_depth/points'),
                 ('pcd_out','points/in_map'),
                 ('odom','/odom_in_map'),
                 ],
@@ -82,7 +91,7 @@ def generate_launch_description():
                 {"use_sim_time" : LaunchConfiguration('use_sim_time')},
                 {"odom_frame" : "map"},
                 {"link_frame" : "ego_vehicle"},
-                {"target_frame" : "ego_vehicle/lidar"},
+                {"target_frame" : "ego_vehicle/rgb_depth"},
                 {"sync_slack" : 0.0125},
                 {"sync_window" : 1.0},
                 ],
@@ -111,6 +120,7 @@ def generate_launch_description():
                 {"width" : 40.},
                 {"clearance_thr" : -1.0},
                 {"traversable_slope" : 0.78},
+                {"crop_z_max" : 1.5},
                 ],
         )
 
@@ -118,7 +128,7 @@ def generate_launch_description():
         _use_sim_time,
         _ns,
         rectify,
-        depth_to_pcd,
+        depth_2_pcd,
         velarray_pcd_2_map_pcd,
         gridmap,
     ])

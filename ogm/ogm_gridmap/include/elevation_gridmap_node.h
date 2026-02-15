@@ -199,6 +199,9 @@ class ElevationGridmapNode  : public rclcpp::Node
       float traversable_slope = this->declare_parameter("traversable_slope", 0.78);
       RCLCPP_INFO(this->get_logger(), "traversable_slope: %f", traversable_slope);
 
+      float crop_z_max = this->declare_parameter("crop_z_max", 1e6);
+      RCLCPP_INFO(this->get_logger(), "crop_z_max: %f", crop_z_max);
+
       do_update = true;
 
       map_frame = this->declare_parameter("map_frame", "map_frame");
@@ -222,7 +225,8 @@ class ElevationGridmapNode  : public rclcpp::Node
       gridmap = std::make_shared<ElevationGridmap>(ElevationGridmap(
             cellsize,
             height, width,
-            traversable_slope));
+            traversable_slope,
+	    crop_z_max));
 
 
       clearance_thr = this->declare_parameter("clearance_thr", 0.5);
