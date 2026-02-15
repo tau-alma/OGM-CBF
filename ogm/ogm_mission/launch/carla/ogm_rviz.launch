@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+import os
+import yaml
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch_ros.actions import Node
+
+DIRNAME = os.path.realpath(os.path.dirname(__file__))
+
+print (DIRNAME)
+
+def generate_launch_description():
+
+    ns="ogm"
+    use_sim_time=False
+
+
+    rviz = Node(
+            package='rviz2',
+            executable='rviz2',
+            name='rviz',
+            output='screen',
+            namespace=ns,
+            arguments=['-d', '%s/ogm_carla.rviz' % DIRNAME],
+        )
+
+
+    return LaunchDescription([
+        rviz,
+    ])
