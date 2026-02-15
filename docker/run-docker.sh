@@ -5,4 +5,4 @@ docker run -it --rm \
   --privileged \
   -e DISPLAY=$DISPLAY \
   -v /data:/data \
-  amm-ogm-cbf
+  amm-ogm-cbf-eevee

@@ -26,13 +26,12 @@ RUN apt-get update && apt-get -y install libsdl2-dev freeglut3-dev ros-humble-pc
 RUN mkdir -p ws/src
 RUN echo "source /home/ogm-cbf/ws/install/setup.bash" >> /root/.bashrc
 
-COPY ogm ogm
-RUN mkdir -p ogm/gridmap/build
-RUN cd ogm/gridmap/build && cmake -DLARGE_DATASET=OFF .. && make install
-
 COPY ros2_ws/src/ogm_cbf_kinematic_sim ogm_cbf_kinematic_sim
+COPY ogm ogm
 
-RUN ln -s /home/ogm-cbf/ogm/ros_ws/src /home/ogm-cbf/ws/src/ogm
+RUN ln -s /home/ogm-cbf/ogm/ogm_gridmap /home/ogm-cbf/ws/src/ogm_gridmap
+RUN ln -s /home/ogm-cbf/ogm/ogm_mission /home/ogm-cbf/ws/src/ogm_mission
+RUN ln -s /home/ogm-cbf/ogm/ogm_tools /home/ogm-cbf/ws/src/ogm_tools
 RUN ln -s /home/ogm-cbf/ogm_cbf_kinematic_sim /home/ogm-cbf/ws/src/ogm_cbf_kinematic_sim
 RUN source /opt/ros/humble/setup.bash && cd ws \
   && rosdep update && apt-get update \

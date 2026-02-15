@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-docker build -t  amm-ogm-cbf -f amm-ogm-cbf.Dockerfile ..
+docker build -t  amm-ogm-cbf-eevee -f amm-ogm-cbf-eevee.Dockerfile ..
