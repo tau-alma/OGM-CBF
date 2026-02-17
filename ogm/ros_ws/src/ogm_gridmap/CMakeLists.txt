@@ -120,6 +120,24 @@ install(TARGETS
   cmd_delay
   DESTINATION lib/${PROJECT_NAME})
 
+add_executable(wall_vis src/main_wall_vis.cpp)
+target_include_directories(wall_vis PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+ament_target_dependencies(wall_vis
+	rclcpp
+	std_msgs
+	std_srvs
+	sensor_msgs
+	nav_msgs
+	pcl_ros
+  OpenCV
+  cv_bridge
+	)
+install(TARGETS
+  wall_vis
+  DESTINATION lib/${PROJECT_NAME})
+
 ament_export_include_directories(include)
 
 ament_package()
