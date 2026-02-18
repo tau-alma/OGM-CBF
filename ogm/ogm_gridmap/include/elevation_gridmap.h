@@ -91,6 +91,7 @@ class ElevationGridmap
     float traversable_slope;
     float traversability_r;
     int traversability_nbh;
+    float traversable_z;
     
     float crop_z_max;
 
@@ -188,9 +189,9 @@ class ElevationGridmap
               }
             }
             //
-            p_obs = 0.;
-            if ( atan2f(z - ground, cellsize*traversability_nbh) > traversable_slope ) p_obs = 1.;
-            
+            if ( gridmap(i,j).z > traversable_z ) p_obs = 1.;
+            else if ( atan2f(z - ground, cellsize*traversability_nbh) > traversable_slope ) p_obs = 1.;
+            else p_obs = 0;
             gridmap(i, j).update_occupancy(p_obs);
           }
         }
@@ -296,6 +297,7 @@ class ElevationGridmap
         uint32_t _height, uint32_t _width,
         float _traversable_slope,
         float _traversability_r,
+        float _traversable_z,
         float _crop_z_max
         )
     {
