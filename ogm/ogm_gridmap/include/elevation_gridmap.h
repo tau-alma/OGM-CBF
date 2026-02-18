@@ -181,11 +181,15 @@ class ElevationGridmap
             //
             float ground = z;
             for (std::pair<int,int> c : nbh(i,j,traversability_nbh,traversability_nbh))
+            {
               if (gridmap(c.first, c.second).z < ground)
+              {
                 ground = gridmap(c.first, c.second).z;
+              }
+            }
             //
             p_obs = 0.;
-            if ( atan2f(z - ground, cellsize) > traversable_slope ) p_obs = 1.;
+            if ( atan2f(z - ground, cellsize*traversability_nbh) > traversable_slope ) p_obs = 1.;
             
             gridmap(i, j).update_occupancy(p_obs);
           }
