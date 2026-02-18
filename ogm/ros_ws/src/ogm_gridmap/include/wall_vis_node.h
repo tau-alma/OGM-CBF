@@ -18,6 +18,8 @@ class WallVisNode  : public rclcpp::Node
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_pcd;
 
     float wall_height;
+    float clearance_height;
+    
     float thr_free;
     float thr_obst;
 
@@ -120,7 +122,7 @@ class WallVisNode  : public rclcpp::Node
         }
         else if (inflated_obst_image.at<uint8_t>(_y, _x) > thr_obst*255)
         {
-          for (float z = 0; z <= wall_height ; z += res)
+          for (float z = 0; z <= clearance_height ; z += res)
             pts.push_back(Eigen::Vector4f(x, y, z, .5));
         }
         else if (p_occ < thr_free)
@@ -194,6 +196,9 @@ class WallVisNode  : public rclcpp::Node
 
       wall_height = this->declare_parameter("wall_height", 1.0);
       RCLCPP_INFO(this->get_logger(), "wall_height: %f", wall_height);
+
+      clearance_height = this->declare_parameter("clearance_height", 0.0);
+      RCLCPP_INFO(this->get_logger(), "clearance_height: %f", clearance_height);
 
       thr_free = this->declare_parameter("thr_free", 0.33);
       RCLCPP_INFO(this->get_logger(), "thr_free: %f", thr_free);
