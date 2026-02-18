@@ -305,6 +305,7 @@ class ElevationGridmap
       traversable_slope = _traversable_slope;
       traversability_r = _traversability_r;
       traversability_nbh = traversability_r / cellsize;
+      traversable_z = _traversable_z;
       crop_z_max = _crop_z_max;
 
       height = _height;
