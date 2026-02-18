@@ -89,6 +89,9 @@ class ElevationGridmap
     float origin_y;
 
     float traversable_slope;
+    float traversability_r;
+    int traversability_nbh;
+    
     float crop_z_max;
 
     Eigen::Matrix<KalmanCellOccupancy, Eigen::Dynamic, Eigen::Dynamic> gridmap;
@@ -122,12 +125,12 @@ class ElevationGridmap
       return in_bounds; 
     }
 
-    std::vector<std::pair<int, int>> nbh(int _i, int _j, int d)
+    std::vector<std::pair<int, int>> nbh(int _i, int _j, int d, int d_step)
     {
       std::vector<std::pair<int, int>> r;
-      for (int i = _i-d; i <= _i+d; ++i)
+      for (int i = _i-d; i <= _i+d; i += d_step)
       {
-         for (int j = _j-d; j <= _j+d; ++j)
+         for (int j = _j-d; j <= _j+d; j += d_step)
          {
             if (is_in_bounds(i, j) && gridmap(i, j).type != KalmanCellOccupancy::UNKNOWN)
             {
@@ -177,7 +180,7 @@ class ElevationGridmap
             std::tie(x, y) = sub2coord(i, j);
             //
             float ground = z;
-            for (std::pair<int,int> c : nbh(i,j,1))
+            for (std::pair<int,int> c : nbh(i,j,traversability_nbh,traversability_nbh))
               if (gridmap(c.first, c.second).z < ground)
                 ground = gridmap(c.first, c.second).z;
             //
@@ -207,7 +210,7 @@ class ElevationGridmap
             std::tie(x, y) = sub2coord(i, j);
             //
             vis_ground = z - cellsize / 2;
-            for (std::pair<int,int> c : nbh(i,j,_ground_nbh_size))
+            for (std::pair<int,int> c : nbh(i,j,_ground_nbh_size,1))
               if (gridmap(c.first, c.second).z < vis_ground)
                 vis_ground = gridmap(c.first, c.second).z;
             //
@@ -288,11 +291,14 @@ class ElevationGridmap
         float _cellsize,
         uint32_t _height, uint32_t _width,
         float _traversable_slope,
+        float _traversability_r,
         float _crop_z_max
         )
     {
       cellsize = _cellsize;
       traversable_slope = _traversable_slope;
+      traversability_r = _traversability_r;
+      traversability_nbh = traversability_r / cellsize;
       crop_z_max = _crop_z_max;
 
       height = _height;
