@@ -150,6 +150,11 @@ class ElevationGridmap
 
   public:  
 
+    void reset()
+    {
+      gridmap = Eigen::Matrix<KalmanCellOccupancy, Eigen::Dynamic, Eigen::Dynamic>::Constant(width, height, KalmanCellOccupancy());
+    }
+
     void update_clearance(float _clearance_x, float _clearance_y, float _clearance_thr)
     {
       clearance_x = _clearance_x;
@@ -318,7 +323,7 @@ class ElevationGridmap
       clearance_y = 0.;
       clearance_thr = 0.;
       
-      gridmap = Eigen::Matrix<KalmanCellOccupancy, Eigen::Dynamic, Eigen::Dynamic>::Constant(width, height, KalmanCellOccupancy());
+      reset();
     }
 
 };

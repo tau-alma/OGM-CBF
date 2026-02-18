@@ -42,6 +42,7 @@ class ElevationGridmapNode  : public rclcpp::Node
     float clearance_thr;
     
     bool do_update;
+    bool do_reset;
     bool do_pub_occgrid;
     bool do_pub_occimg;
     bool do_pub_elevgrid_real;
@@ -162,6 +163,10 @@ class ElevationGridmapNode  : public rclcpp::Node
     void callback_pc2(const sensor_msgs::msg::PointCloud2::SharedPtr msgp)
     {
 
+      if (do_reset)
+      {
+        gridmap->reset();
+      }
       if (do_update)
       {
         pcl::PCLPointCloud2::Ptr pcdp (new pcl::PCLPointCloud2());
@@ -209,6 +214,9 @@ class ElevationGridmapNode  : public rclcpp::Node
       RCLCPP_INFO(this->get_logger(), "crop_z_max: %f", crop_z_max);
 
       do_update = true;
+
+      do_reset = this->declare_parameter("do_reset", false);
+      RCLCPP_INFO(this->get_logger(), "do_reset: %x", do_reset);
 
       map_frame = this->declare_parameter("map_frame", "map_frame");
       RCLCPP_INFO(this->get_logger(), "map_frame: %s", map_frame.c_str());
