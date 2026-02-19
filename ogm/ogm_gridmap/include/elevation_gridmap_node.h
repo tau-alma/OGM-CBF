@@ -82,7 +82,7 @@ class ElevationGridmapNode  : public rclcpp::Node
       }
       else
       {
-        RCLCPP_INFO(this->get_logger(), "Set %s severity to %s", request->logger_name.c_str(), severity);
+        RCLCPP_INFO(this->get_logger(), "Set %s severity to %s (%d)", request->logger_name.c_str(), severity_string, severity);
         response->success = true;
       }
 
