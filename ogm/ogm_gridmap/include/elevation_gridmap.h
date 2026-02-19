@@ -62,11 +62,14 @@ class KalmanCell : public Cell
 class KalmanCellOccupancy : public KalmanCell
 {
   public : 
+    static constexpr float UNKNOWN_P = 0.5;
+    static constexpr float UNSET_P = -1.0;
+    
     float p_obs;
     
     KalmanCellOccupancy() : KalmanCell()
     {
-      p_obs = 0.5;
+      p_obs = UNKNOWN_P;
     }
 
     void update_occupancy(float _p_obs)
@@ -164,6 +167,8 @@ class ElevationGridmap
 
     void update(pcl::PointCloud<pcl::PointXYZ>& xyz)
     {
+      std::list<std::pair<int, int>> p_update_candidates;
+
       for (pcl::PointXYZ pt : xyz.points)
       {
         float z = pt.z;
@@ -171,34 +176,40 @@ class ElevationGridmap
         std::tie(i, j) = coord2sub(pt.x, pt.y);
         //RCLCPP_INFO(this->get_logger(), "%d %d %f", i, j, pt.z);
         if (is_in_bounds(i, j) 
-	    && !is_in_clearance(pt)
-	    && (z < crop_z_max)) gridmap(i ,j).update(z); 
+	          && !is_in_clearance(pt)
+	          && (z < crop_z_max))
+        {
+          gridmap(i ,j).update(z);
+          for (std::pair<int,int> c : nbh(i,j,traversability_nbh,traversability_nbh))
+          {
+            gridmap(c.first, c.second).update_occupancy(KalmanCellOccupancy::UNSET_P);
+            p_update_candidates.push_back(c);
+          }
+        } 
       }
 
-      for (uint32_t i = 0; i < width; ++i)
+      for (std::pair<int,int> cand : p_update_candidates)
       {
-        for (uint32_t j = 0; j < height; ++j)
+        if (gridmap(cand.first, cand.second).type != KalmanCellOccupancy::UNKNOWN
+            && gridmap(cand.first, cand.second).p_obs == KalmanCellOccupancy::UNSET_P)
         {
-          if (gridmap(i, j).type != KalmanCellOccupancy::UNKNOWN)
+          float x, y, z, p_obs;
+          z = gridmap(cand.first, cand.second).z;
+          std::tie(x, y) = sub2coord(cand.first, cand.second);
+          //
+          float ground = z;
+          for (std::pair<int,int> c : nbh(cand.first,cand.second,traversability_nbh,traversability_nbh))
           {
-            float x, y, z, p_obs;
-            z = gridmap(i, j).z;
-            std::tie(x, y) = sub2coord(i, j);
-            //
-            float ground = z;
-            for (std::pair<int,int> c : nbh(i,j,traversability_nbh,traversability_nbh))
+            if (gridmap(c.first, c.second).z < ground)
             {
-              if (gridmap(c.first, c.second).z < ground)
-              {
-                ground = gridmap(c.first, c.second).z;
-              }
+              ground = gridmap(c.first, c.second).z;
             }
-            //
-            if ( gridmap(i,j).z > traversable_z ) p_obs = 1.;
-            else if ( atan2f(z - ground, cellsize*traversability_nbh) > traversable_slope ) p_obs = 1.;
-            else p_obs = 0;
-            gridmap(i, j).update_occupancy(p_obs);
           }
+          //
+          if ( gridmap(cand.first,cand.second).z > traversable_z ) p_obs = 1.;
+          else if ( atan2f(z - ground, cellsize*traversability_nbh) > traversable_slope ) p_obs = 1.;
+          else p_obs = 0;
+          gridmap(cand.first, cand.second).update_occupancy(p_obs);
         }
       }
     }
