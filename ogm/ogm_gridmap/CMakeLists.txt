@@ -23,6 +23,7 @@ find_package(cv_bridge REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(PCL 1.10 REQUIRED)
 find_package(pcl_ros REQUIRED)
+find_package(logging_demo REQUIRED)
 
 include_directories( ${OpenCV_INCLUDE_DIRS} )
 
@@ -115,6 +116,7 @@ ament_target_dependencies(elevgrid
 	std_srvs
 	sensor_msgs
   nav_msgs
+  logging_demo
 	pcl_ros
 	pcl_conversions
   OpenCV

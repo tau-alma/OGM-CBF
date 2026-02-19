@@ -2,10 +2,12 @@
 #define __OGM_GRIDMAP_ELEVATION_GRIDMAP_NODE__
 
 #include "rclcpp/rclcpp.hpp"
+#include "rcutils/logging.h"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "std_srvs/srv/trigger.hpp"
+#include "logging_demo/srv/config_logger.hpp"
 
 #include "pcl_ros/transforms.hpp"
 #include <pcl_conversions/pcl_conversions.h>
@@ -31,6 +33,7 @@ class ElevationGridmapNode  : public rclcpp::Node
 
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr trigger_on;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr trigger_off;
+    rclcpp::Service<logging_demo::srv::ConfigLogger>::SharedPtr logger_service;
 
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pc2;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odom;
@@ -49,6 +52,42 @@ class ElevationGridmapNode  : public rclcpp::Node
     bool do_pub_elevgrid_vis;
 
     std::shared_ptr<ElevationGridmap> gridmap;
+
+    void handle_logger_config_request(
+        const std::shared_ptr<logging_demo::srv::ConfigLogger::Request> request,
+        std::shared_ptr<logging_demo::srv::ConfigLogger::Response> response)
+    {
+      const char * severity_string = request->level.c_str();
+      int severity;
+      rcutils_ret_t ret = rcutils_logging_severity_level_from_string(
+          severity_string,
+          rcl_get_default_allocator(),
+          &severity
+          );
+     
+      if (RCUTILS_RET_OK != ret)
+      {
+        RCLCPP_ERROR(this->get_logger(), "Failed to parse severity: %s", severity_string);
+      }
+
+      if (RCUTILS_RET_OK == ret)
+      {
+        ret = rcutils_logging_set_logger_level(request->logger_name.c_str(), severity);
+      }
+
+      if (RCUTILS_RET_OK != ret)
+      {
+        RCLCPP_ERROR(this->get_logger(), "Failed to set severity");
+        response->success = false;
+      }
+      else
+      {
+        response->success = true;
+      }
+
+
+
+    }
 
     void publish_occgrid(rclcpp::Time& now)
     {
@@ -337,6 +376,13 @@ class ElevationGridmapNode  : public rclcpp::Node
 			    std::bind(&ElevationGridmapNode::callback_off, this,
 				    std::placeholders::_1, std::placeholders::_2)
 			    );
+
+      logger_service = create_service<logging_demo::srv::ConfigLogger>(
+          "config_logger",
+          std::bind(
+            &ElevationGridmapNode::handle_logger_config_request, this,
+            std::placeholders::_1, std::placeholders::_2)
+          );
 
     }
 };
