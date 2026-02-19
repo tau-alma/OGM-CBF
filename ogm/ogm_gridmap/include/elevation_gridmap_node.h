@@ -126,17 +126,43 @@ class ElevationGridmapNode  : public rclcpp::Node
 
     void tick_map()
     {
+      RCLCPP_DEBUG(this->get_logger(), "--------------------");
+      RCLCPP_DEBUG(this->get_logger(), ">> map tick ");
+      
+      auto wall_start = std::chrono::high_resolution_clock::now();
+      
       rclcpp::Time ts = this->now();
 
       // pc2 elev grid msg
       if (do_pub_elevgrid_real) publish_elevgrid_real(ts);
+
+      auto wall_real = std::chrono::high_resolution_clock::now();
+      RCLCPP_DEBUG(this->get_logger(), "wall-tick real: %lf ms",
+		      std::chrono::duration<double, std::milli>(wall_real - wall_start).count());
+
       if (do_pub_elevgrid_vis) publish_elevgrid_vis(ts);
 
+      auto wall_vis = std::chrono::high_resolution_clock::now();
+      RCLCPP_DEBUG(this->get_logger(), "wall-tick vis: %lf ms",
+		      std::chrono::duration<double, std::milli>(wall_vis - wall_real).count());
+      
       // occgrid
       if (do_pub_occgrid) publish_occgrid(ts);
 
+      auto wall_grid = std::chrono::high_resolution_clock::now();
+      RCLCPP_DEBUG(this->get_logger(), "wall-tick grid: %lf ms",
+		      std::chrono::duration<double, std::milli>(wall_grid - wall_vis).count());
+
       // occimg
       if (do_pub_occimg) publish_occimg(ts);
+      
+      auto wall_img = std::chrono::high_resolution_clock::now();
+      RCLCPP_DEBUG(this->get_logger(), "wall-tick img: %lf ms",
+		      std::chrono::duration<double, std::milli>(wall_img - wall_grid).count());
+
+      RCLCPP_DEBUG(this->get_logger(), "<< map tick total : %lf ms",
+		      std::chrono::duration<double, std::milli>(wall_img - wall_start).count());
+      RCLCPP_DEBUG(this->get_logger(), "--------------------");
     }
 
     void callback_on(
@@ -162,11 +188,22 @@ class ElevationGridmapNode  : public rclcpp::Node
 
     void callback_pc2(const sensor_msgs::msg::PointCloud2::SharedPtr msgp)
     {
+      RCLCPP_DEBUG(this->get_logger(), "--------------------");
+      RCLCPP_DEBUG(this->get_logger(), ">> pcd callback");
+
+      auto wall_start = std::chrono::high_resolution_clock::now();
+
 
       if (do_reset)
       {
         gridmap->reset();
       }
+
+
+      auto wall_reset = std::chrono::high_resolution_clock::now();
+      RCLCPP_DEBUG(this->get_logger(), "wall-callback reset: %lf ms",
+		      std::chrono::duration<double, std::milli>(wall_reset - wall_start).count());
+
       if (do_update)
       {
         pcl::PCLPointCloud2::Ptr pcdp (new pcl::PCLPointCloud2());
@@ -176,6 +213,14 @@ class ElevationGridmapNode  : public rclcpp::Node
 
         gridmap->update(xyz);
       }
+
+      auto wall_update = std::chrono::high_resolution_clock::now();
+      RCLCPP_DEBUG(this->get_logger(), "wall-callback update: %lf ms",
+		      std::chrono::duration<double, std::milli>(wall_update - wall_reset).count());
+      
+      RCLCPP_DEBUG(this->get_logger(), "<< pcd callback total : %lf ms",
+		      std::chrono::duration<double, std::milli>(wall_update - wall_start).count());
+      RCLCPP_DEBUG(this->get_logger(), "--------------------");
     }
 
     void callback_clearance(const nav_msgs::msg::Odometry::SharedPtr msgo)
