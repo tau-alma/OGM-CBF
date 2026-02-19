@@ -275,6 +275,9 @@ class ElevationGridmapNode  : public rclcpp::Node
   public:
     ElevationGridmapNode() : Node("gridmap")
     {
+
+      RCLCPP_INFO(this->get_logger(), "logging into %s", this->get_logger().get_name());
+
       float cellsize = this->declare_parameter("cellsize", 0.025);
       RCLCPP_INFO(this->get_logger(), "cellsize: %f", cellsize);
 
