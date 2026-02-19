@@ -24,17 +24,17 @@ class MirScenario:
     SENSOR_LONG = "lr20"
 
     OFFSETS = {
-            "concave_sr5_00" : 1770578242.5245247,
-            "concave_sr5_01" : 1770578242.5245247 + 3407.5,
-            "concave_sr5_02" : 1770578242.5245247 + 3587.,
-            "concave_sr5_03" : 1770578242.5245247 + 3805.5,
-            "concave_sr5_04" : 1770578242.5245247 + 4011.,
+            "concave_lr20_00" : 1770578242.5245247,
+            "concave_lr20_01" : 1770578242.5245247 + 3407.5,
+            "concave_lr20_02" : 1770578242.5245247 + 3587.,
+            "concave_lr20_03" : 1770578242.5245247 + 3805.5,
+            "concave_lr20_04" : 1770578242.5245247 + 4011.,
             # 
-            "concave_lr20_00" : 1770579347.0245247,
-            "concave_lr20_01" : 1770579347.0245247 + 634.4,
-            "concave_lr20_02" : 1770579347.0245247 + 782.5,
-            "concave_lr20_03" : 1770579347.0245247 + 1832.8,
-            "concave_lr20_04" : 1770579347.0245247 + 2003.2,
+            "concave_sr5_00" : 1770579347.0245247,
+            "concave_sr5_01" : 1770579347.0245247 + 634.4,
+            "concave_sr5_02" : 1770579347.0245247 + 782.5,
+            "concave_sr5_03" : 1770579347.0245247 + 1832.8,
+            "concave_sr5_04" : 1770579347.0245247 + 2003.2,
             # 
             "clutter_sr5_00" : 1770578790.5245247,
             "clutter_sr5_01" : 1770578790.5245247 + 127.,
@@ -68,19 +68,19 @@ class MirScenario:
            ],
         (ENV_CONCAVE, SENSOR_SHORT) :
         [
-            "concave_sr5/rosbag2_2026_02_08-21_17_14",
-            "concave_sr5/rosbag2_2026_02_08-22_13_59",
-            "concave_sr5/rosbag2_2026_02_08-22_17_00",
-            "concave_sr5/rosbag2_2026_02_08-22_20_36",
-            "concave_sr5/rosbag2_2026_02_08-22_24_00",
+            "concave_sr5/rosbag2_2026_02_08-21_35_41",
+            "concave_sr5/rosbag2_2026_02_08-21_46_17",
+            "concave_sr5/rosbag2_2026_02_08-21_48_40",
+            "concave_sr5/rosbag2_2026_02_08-22_06_11",
+            "concave_sr5/rosbag2_2026_02_08-22_09_00",
             ],
         (ENV_CONCAVE, SENSOR_LONG) :
         [
-            "concave_lr20/rosbag2_2026_02_08-21_35_41",
-            "concave_lr20/rosbag2_2026_02_08-21_46_17",
-            "concave_lr20/rosbag2_2026_02_08-21_48_40",
-            "concave_lr20/rosbag2_2026_02_08-22_06_11",
-            "concave_lr20/rosbag2_2026_02_08-22_09_00",
+            "concave_lr20/rosbag2_2026_02_08-21_17_14",
+            "concave_lr20/rosbag2_2026_02_08-22_13_59",
+            "concave_lr20/rosbag2_2026_02_08-22_17_00",
+            "concave_lr20/rosbag2_2026_02_08-22_20_36",
+            "concave_lr20/rosbag2_2026_02_08-22_24_00",
             ]
         }
 

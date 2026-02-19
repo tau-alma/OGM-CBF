@@ -12,10 +12,11 @@ from matplotlib import rc
 plt.rcParams['ps.useafm'] = True
 rc('font',**{
     'family':'serif',
-    'size' : 11,
+    'size' : 16,
     })
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['text.usetex'] = True
+plt.rcParams['text.latex.preamble']=r"\usepackage{amsmath}"
 
 from mir_scenario import MirScenario
 
@@ -87,42 +88,48 @@ def vis_scenario_set(scenarios, name, show_x_lbl=True):
             if 'clutter' in sc.name and 'level_0' in t:
                 plot_kwargs['linestyle']='-'
                 plot_kwargs['c']='red'
-                lbl = "Clutter: "
+                lbl = ""
+                #lbl += "Clutter: "
                 lbl += "Level 0"
             elif 'clutter' in sc.name and 'level_1' in t:
                 plot_kwargs['linestyle']='--'
                 plot_kwargs['c']='green'
-                lbl = "Clutter: "
+                lbl = ""
+                #lbl += "Clutter: "
                 lbl += "Level 1"
             elif 'clutter' in sc.name and 'level_2' in t:
                 plot_kwargs['linestyle']=':'
                 plot_kwargs['c']='blue'
-                lbl = "Clutter: "
+                lbl = ""
+                #lbl += "Clutter: "
                 lbl += "Level 2"
             elif 'concave' in sc.name and 'level_0' in t:
                 plot_kwargs['linestyle']='-'
                 plot_kwargs['c']='cyan'
-                lbl = "Concave: "
+                lbl = ""
+                #lbl += "Concave: "
                 lbl += "Level 0"
             elif 'concave' in sc.name and 'level_1' in t:
                 plot_kwargs['linestyle']='--'
                 plot_kwargs['c']='magenta'
-                lbl = "Concave: "
+                lbl = ""
+                #lbl += "Concave: "
                 lbl += "Level 1"
             elif 'concave' in sc.name and 'level_2' in t:
                 plot_kwargs['linestyle']=':'
                 plot_kwargs['c']='orange'
-                lbl = "Concave: "
+                lbl = ""
+                #lbl += "Concave: "
                 lbl += "Level 2"
             else:
                 assert False
             if sc.run == DOMINANT_RUN and 'sr5' in sc.name:
                 plot_kwargs['label']=lbl
                 plot_kwargs['alpha']=1.
-                plot_kwargs['linewidth']=1.5
+                plot_kwargs['linewidth']=2.
             else:
                 plot_kwargs['alpha']=.1
-                plot_kwargs['linewidth']=1.
+                plot_kwargs['linewidth']=1.5
             
             plt.plot(
                     series[sc.name][t][:,0]-ts0,
