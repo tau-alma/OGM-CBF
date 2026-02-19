@@ -6,6 +6,35 @@ import time
 from unicodedata import decimal
 from unittest import result
 import time
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+from sensor_msgs.msg import Image as RosImage
+
+_ros_node = None
+_pub_rgb = _pub_depth = _pub_segdepth = None
+rgb_image = None
+
+def np_to_img(node, arr, encoding, frame_id="vcbf_cam0"):
+    msg = RosImage()
+    msg.header.stamp = node.get_clock().now().to_msg()
+    msg.header.frame_id = frame_id
+    msg.height, msg.width = arr.shape[:2]
+    msg.encoding = encoding
+    msg.step = msg.width if encoding == "mono8" else msg.width * 3
+    msg.data = arr.tobytes()
+    return msg
+
+def rgb_to_array(image):
+    global rgb_image
+    rgb_image = to_rgb_array(image).copy()  # uses your to_rgb_array() :contentReference[oaicite:1]{index=1}
+
+def depth_to_u8(depth_m):
+    d = np.array(depth_m, dtype=np.float32)
+    d[d >= 255.0] = 255.0
+    u8 = np.clip((d / 20.0) * 255.0, 0, 255).astype(np.uint8)
+    u8[d == 255.0] = 255
+    return u8
 
 try:
     sys.path.append(glob.glob('/opt/carla-simulator/PythonAPI/carla/dist/carla-*%d.%d-%s.egg' % (
@@ -27,6 +56,76 @@ from qpsolvers import solve_qp
 import math
 from copy import deepcopy
 from PIL import Image
+
+from time import monotonic
+
+def clamp(x, lo, hi):
+    return lo if x < lo else hi if x > hi else x
+
+def rate_limit(prev, target, max_rate_per_s, dt):
+    step = max_rate_per_s * dt
+    if target > prev + step: return prev + step
+    if target < prev - step: return prev - step
+    return target
+
+# ===== "carla_low_level_control" params (copy same values) =====
+LL_L = 2.7              # wheelbase (m)
+LL_MAX_STEER_RAD = 0.7  # rad => steer=1
+LL_STEER_RATE = 2.5     # steer units per s
+
+LL_MAX_ACCEL = 3.0      # m/s^2
+LL_MAX_DECEL = 6.0      # m/s^2
+LL_KP, LL_KI, LL_KD = 1.2, 0.2, 0.0
+LL_I_LIM = 5.0
+LL_THR_RATE = 3.0
+LL_BRK_RATE = 6.0
+LL_ALPHA = 0.2          # speed LPF alpha
+LL_DEADBAND = 0.05      # m/s
+
+# persistent low-level state (kept across controller() calls)
+_ll = {
+    "t_prev": monotonic(),
+    "v_f": 0.0,
+    "e_prev": 0.0,
+    "i": 0.0,
+    "steer_prev": 0.0,
+    "thr_prev": 0.0,
+    "brk_prev": 0.0,
+}
+
+def ll_compute_steer(v_ref, w_ref):
+    v_eps = 0.2
+    if abs(v_ref) < v_eps or abs(w_ref) < 1e-4:
+        delta = 0.0
+    else:
+        delta = math.atan(LL_L * w_ref / v_ref)  # signed v_ref handles reverse
+    delta = clamp(delta, -LL_MAX_STEER_RAD, +LL_MAX_STEER_RAD)
+    return float(clamp(delta / LL_MAX_STEER_RAD, -1.0, 1.0))
+
+def ll_compute_longitudinal(v_ref, v_meas, dt):
+    v_ref_abs = abs(v_ref)
+    e = v_ref_abs - v_meas
+    if abs(e) < LL_DEADBAND:
+        e = 0.0
+
+    de = (e - _ll["e_prev"]) / max(dt, 1e-6)
+    _ll["e_prev"] = e
+
+    _ll["i"] += e * dt
+    _ll["i"] = clamp(_ll["i"], -LL_I_LIM, +LL_I_LIM)
+
+    a_cmd = LL_KP * e + LL_KI * _ll["i"] + LL_KD * de
+    a_cmd = clamp(a_cmd, -LL_MAX_DECEL, +LL_MAX_ACCEL)
+
+    if a_cmd >= 0.0:
+        thr, brk = a_cmd / LL_MAX_ACCEL, 0.0
+    else:
+        thr, brk = 0.0, (-a_cmd) / LL_MAX_DECEL
+
+    return float(clamp(thr, 0.0, 1.0)), float(clamp(brk, 0.0, 1.0))
+
+
+
 # from keras.models import load_model
 # from tensorflow.image import resize
 # import tensorflow as tf
@@ -62,7 +161,7 @@ processed_depth = processed_depth2 =  processed_depth3 = np.ones((IM_HEIGHT, IM_
 mask = mask2 = mask3  = np.zeros((IM_HEIGHT, IM_WIDTH))
 
 side_camera_angle = 0           # rotation between cameras 
-fov = 30                        # field of view of cameras   
+fov = 60                        # field of view of cameras   
 
 ### loading the saved keras model for CBF predictions
 #model = load_model('model_056580.h5')
@@ -492,11 +591,11 @@ def apply_cbf(ego_vehicle):
     ]
 
 
-    cbf_throttle, cbf_steer, carBrake = controller( Vision, Vision2, Vision3, ego_vehicle)
+    cbf_throttle, cbf_steer, carBrake, reverse = controller( Vision, Vision2, Vision3, ego_vehicle)
    
     ##--------------------------------------------------------------------------------------------------------------------------------##
     
-    ego_vehicle.apply_control(carla.VehicleControl( throttle = cbf_throttle, steer = cbf_steer, brake = carBrake))  ## applying control command in the environment
+    ego_vehicle.apply_control(carla.VehicleControl( throttle = cbf_throttle, steer = cbf_steer, brake = carBrake, reverse=reverse))  ## applying control command in the environment
     return True
 
 def depth_to_array(image, camera_num = 1):
@@ -737,15 +836,16 @@ def controller(Vision, Vision2, Vision3, ego_vehicle):
     P_gamma = 1.0
     C_eta = 1.0 # not used
     P_eta = 1.0 # not used
-    Vmax = +3.0
-    Vmin = +0.5
+    Vmax = 3.0
+    Vmin = -0.25
     Wmax = +4.0*np.pi
     Wmin = -4.0*np.pi
     Delta_ub = +0.5
     Delta_lb = -0.5
     heading = -np.pi/2
 
-    C_zeta = 0.015 #parameter of h_img
+    C_zeta = 0.085 #parameter of h_img
+    C_zeta_temp = 0.0
     ##--------------------------------------------------------------------------------------------##
 
     ##------------------------- CBF = h_img + h_d ------------------------------------------------##
@@ -767,13 +867,13 @@ def controller(Vision, Vision2, Vision3, ego_vehicle):
     ## Instead of the above lines, we can use the following lines where h_img is not dropped: 
     
     for i in range(5):
-        CBF.append(C_zeta*CBF_2D[i] + C_betha*(depth[i])**P_betha + A_betha*depth[i])
+        CBF.append(C_zeta_temp*CBF_2D[i] + C_betha*(depth[i])**P_betha + A_betha*depth[i])
 
     for i in range(5):
-        CBF_2.append(C_zeta*CBF_2D_2[i] + C_betha*(depth_2[i])**P_betha + A_betha*depth_2[i])
+        CBF_2.append(C_zeta_temp*CBF_2D_2[i] + C_betha*(depth_2[i])**P_betha + A_betha*depth_2[i])
     
     for i in range(5):
-        CBF_3.append(C_zeta*CBF_2D_3[i] + C_betha*(depth_3[i])**P_betha + A_betha*depth_3[i])
+        CBF_3.append(C_zeta_temp*CBF_2D_3[i] + C_betha*(depth_3[i])**P_betha + A_betha*depth_3[i])
     
     ##--------------------------------------------------------------------------------------------##
     
@@ -811,6 +911,8 @@ def controller(Vision, Vision2, Vision3, ego_vehicle):
         final_CBF_2D = CBF_2D_3
         final_dCBF_2D = dCBF_2D_3
         worst_camera_angle = math.radians(side_camera_angle)
+
+
 
 
 
@@ -963,7 +1065,7 @@ def controller(Vision, Vision2, Vision3, ego_vehicle):
     ## Error handling in case of infeasibility
     except:
         print("exception on optimization occured")
-        vel, dPsi = vel_prev, dPsi_prev     # in case of infeasibility, return the previous solution
+        vel, dPsi =0, 0# vel_prev, dPsi_prev     # in case of infeasibility, return the previous solution
         Delta = 0
 
 
@@ -976,46 +1078,74 @@ def controller(Vision, Vision2, Vision3, ego_vehicle):
 
     ##------------------------------------- Low-level Controller ---------------------------------##
 
-    ## steering [-1,+1]
+    # ## steering [-1,+1]
 
-    if abs(dPsi) < 1e-3:
-        steer_angle = 0
+    # if abs(dPsi) < 1e-3:
+    #     steer_angle = 0
 
-    elif dPsi > 0:
-        R = abs(vel/dPsi)   # radius of turning
-        steer_angle = math.atan2(L, R) 
+    # elif dPsi > 0:
+    #     R = abs(vel/dPsi)   # radius of turning
+    #     steer_angle = math.atan2(L, R) 
 
-    elif dPsi < 0:
-        R = abs(vel/dPsi)   # radius of turning
-        steer_angle = -math.atan2(L, R) 
+    # elif dPsi < 0:
+    #     R = abs(vel/dPsi)   # radius of turning
+    #     steer_angle = -math.atan2(L, R) 
 
-    steer_angle = math.degrees(steer_angle)
+    # steer_angle = math.degrees(steer_angle)
 
-    steer_angle = np.clip(steer_angle, -30.0, +30.0)
+    # steer_angle = np.clip(steer_angle, -30.0, +30.0)
 
-    steer = np.clip(steer_angle/30.0, -1, 1)
+    # steer = np.clip(steer_angle/30.0, -1, 1)
 
 
 
-    ## throttle & carBrake: [0,1]
+    # ## throttle & carBrake: [0,1]
 
-    velocity = math.sqrt(Vx**2+Vy**2+Vz**2)     # real velocity
+    # velocity = math.sqrt(Vx**2+Vy**2+Vz**2)     # real velocity
     
-    vel_clip = np.clip(vel, -30, +30)
+    # vel_clip = np.clip(vel, -30, +30)
 
-    dV = (vel_clip-velocity)
+    # dV = (vel_clip-velocity)
     
-    Kp = 0.3    # P-gain of velocity controller
+    # Kp = 0.3    # P-gain of velocity controller
 
-    if dV > 0:
-        throttle = np.clip(Kp*dV, 0, 1)
-        carBrake = 0
-    elif dV < 0:
-        throttle = 0
-        carBrake = Kp*np.clip(abs(Kp*dV), 0, 1)
-    else:
-        throttle = 0
-        carBrake = 0
+    # if dV > 0:
+    #     throttle = np.clip(Kp*dV, 0, 1)
+    #     carBrake = 0
+    # elif dV < 0:
+    #     throttle = 0
+    #     carBrake = Kp*np.clip(abs(Kp*dV), 0, 1)
+    # else:
+    #     throttle = 0
+    #     carBrake = 0
+        # ==== low-level = same as carla_low_level_control ====
+    now = monotonic()
+    dt = max(now - _ll["t_prev"], 1e-6)
+    _ll["t_prev"] = now
+
+    v_meas = math.sqrt(Vx**2 + Vy**2 + Vz**2)
+    _ll["v_f"] = (1.0 - LL_ALPHA) * _ll["v_f"] + LL_ALPHA * v_meas
+
+    v_ref = vel
+    w_ref = dPsi
+    # if steering comes out flipped vs your ROS node, do: w_ref = -dPsi
+
+    steer_tgt = ll_compute_steer(v_ref, w_ref)
+    thr_tgt, brk_tgt = ll_compute_longitudinal(v_ref, _ll["v_f"], dt)
+
+    # exclusivity
+    if thr_tgt > 0.0: brk_tgt = 0.0
+    if brk_tgt > 0.0: thr_tgt = 0.0
+
+    # rate limit (smooth)
+    steer = rate_limit(_ll["steer_prev"], steer_tgt, LL_STEER_RATE, dt)
+    throttle = rate_limit(_ll["thr_prev"], thr_tgt, LL_THR_RATE, dt)
+    carBrake = rate_limit(_ll["brk_prev"], brk_tgt, LL_BRK_RATE, dt)
+
+    _ll["steer_prev"], _ll["thr_prev"], _ll["brk_prev"] = steer, throttle, carBrake
+
+    reverse = bool(v_ref < 0.0)
+
 
     ##--------------------------------------------------------------------------------------------##
 
@@ -1025,7 +1155,8 @@ def controller(Vision, Vision2, Vision3, ego_vehicle):
     data.append([X, Y, Z, phii, thethaa, psii, Vx, Vy, Vz, Wx, Wy, Wz, vel, dPsi, Delta, throttle, steer, carBrake, time.time()-t])
 
     ##-------------------------------------- return output----------------------------------------##
-    return throttle, steer, carBrake
+    return throttle, steer, carBrake, reverse
+
 
     ##--------------------------------------------------------------------------------------------##
 
@@ -1079,6 +1210,9 @@ def main():
         depth_camera3 = None
         obstacle = None
 
+        rgb_camera = None  # add with other sensor vars
+
+
         # --------------
         # Spawn ego vehicle
         # --------------
@@ -1094,10 +1228,10 @@ def main():
         ego_vehicle = world.spawn_actor(ego_bp, transform)
 
         # ---------------------adding RGB camera blueprint---------------------------------
-        # rgb_camera_bp =  world.get_blueprint_library().find('sensor.camera.rgb')
-        # rgb_camera_bp.set_attribute("image_size_x", str(IM_WIDTH))
-        # rgb_camera_bp.set_attribute("image_size_y", str(IM_HEIGHT))
-        # rgb_camera_bp.set_attribute("fov", str(fov))
+        rgb_camera_bp =  world.get_blueprint_library().find('sensor.camera.rgb')
+        rgb_camera_bp.set_attribute("image_size_x", str(IM_WIDTH))
+        rgb_camera_bp.set_attribute("image_size_y", str(IM_HEIGHT))
+        rgb_camera_bp.set_attribute("fov", str(fov))
         #----------------------------------------------------------------------------------
 
         #----------------------adding semantic segmentation blueprint----------------------
@@ -1115,6 +1249,22 @@ def main():
         depth_camera_bp.set_attribute("image_size_y", str(IM_HEIGHT))
         depth_camera_bp.set_attribute("fov", str(fov))
         #-----------------------------------------------------------------------------------
+
+        cam_location1 = carla.Location(x=2.4, y=0, z=0.5)
+        cam_rotation1 = carla.Rotation(yaw=0)
+        cam_transform1 = carla.Transform(cam_location1, cam_rotation1)
+        rgb_camera = world.try_spawn_actor(rgb_camera_bp, cam_transform1, attach_to=ego_vehicle,
+                                        attachment_type=carla.AttachmentType.Rigid)
+        rgb_camera.listen(rgb_to_array)
+
+
+        rclpy.init(args=None)
+        _ros_node = Node("vcbf_images")
+        #qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST)
+        _pub_rgb = _ros_node.create_publisher(RosImage, "/vcbf/rgb", 1)
+        _pub_depth = _ros_node.create_publisher(RosImage, "/vcbf/depth", 1)
+        _pub_segdepth = _ros_node.create_publisher(RosImage, "/vcbf/seg_depth", 1)
+
 
         # --------------
         # adding camera sensors to the environment
@@ -1217,37 +1367,37 @@ def main():
         # spawn specific cars for our static scenario
         #-------------
 
-        vehicle_bp_library = world.get_blueprint_library().find('vehicle.ford.ambulance')
-        spawn_point = carla.Transform(carla.Location(x=-41 ,y = 94, z = 0.5), carla.Rotation(yaw=-90))
-        obstacle = world.try_spawn_actor((vehicle_bp_library), spawn_point)
+        # vehicle_bp_library = world.get_blueprint_library().find('vehicle.ford.ambulance')
+        # spawn_point = carla.Transform(carla.Location(x=-41 ,y = 94, z = 0.5), carla.Rotation(yaw=-90))
+        # obstacle = world.try_spawn_actor((vehicle_bp_library), spawn_point)
 
-        vehicle_bp_library = world.get_blueprint_library().find('vehicle.carlamotors.carlacola')
-        spawn_point = carla.Transform(carla.Location(x=-44.5, y = 70, z = 0.5), carla.Rotation(yaw=-90))
-        obstacle1 = world.try_spawn_actor((vehicle_bp_library), spawn_point)
+        # vehicle_bp_library = world.get_blueprint_library().find('vehicle.carlamotors.carlacola')
+        # spawn_point = carla.Transform(carla.Location(x=-44.5, y = 70, z = 0.5), carla.Rotation(yaw=-90))
+        # obstacle1 = world.try_spawn_actor((vehicle_bp_library), spawn_point)
 
-        vehicle_bp_library = world.get_blueprint_library().find('vehicle.dodge.charger_police_2020')
-        spawn_point = carla.Transform(carla.Location(x=-38, y = 63, z = 0.5), carla.Rotation(yaw=30+180))
-        obstacle2 = world.try_spawn_actor((vehicle_bp_library), spawn_point)
+        # vehicle_bp_library = world.get_blueprint_library().find('vehicle.dodge.charger_police_2020')
+        # spawn_point = carla.Transform(carla.Location(x=-38, y = 63, z = 0.5), carla.Rotation(yaw=30+180))
+        # obstacle2 = world.try_spawn_actor((vehicle_bp_library), spawn_point)
 
-        vehicle_bp_library = world.get_blueprint_library().find('vehicle.volkswagen.t2')
-        spawn_point = carla.Transform(carla.Location(x=-37.5, y = 73.5, z = 0.5), carla.Rotation(yaw=-45))
-        obstacle4 = world.try_spawn_actor((vehicle_bp_library), spawn_point)
+        # vehicle_bp_library = world.get_blueprint_library().find('vehicle.volkswagen.t2')
+        # spawn_point = carla.Transform(carla.Location(x=-37.5, y = 73.5, z = 0.5), carla.Rotation(yaw=-45))
+        # obstacle4 = world.try_spawn_actor((vehicle_bp_library), spawn_point)
 
-        vehicle_bp_library = world.get_blueprint_library().find('vehicle.mercedes.sprinter')
-        spawn_point = carla.Transform(carla.Location(x=-45, y = 81, z = 0.5), carla.Rotation(yaw=-90))
-        obstacle5 = world.try_spawn_actor((vehicle_bp_library), spawn_point)
+        # vehicle_bp_library = world.get_blueprint_library().find('vehicle.mercedes.sprinter')
+        # spawn_point = carla.Transform(carla.Location(x=-45, y = 81, z = 0.5), carla.Rotation(yaw=-90))
+        # obstacle5 = world.try_spawn_actor((vehicle_bp_library), spawn_point)
 
-        vehicle_bp_library = world.get_blueprint_library().find('vehicle.carlamotors.firetruck')
-        spawn_point = carla.Transform(carla.Location(x=-48.5, y = 86, z = 0.5), carla.Rotation(yaw=90))
-        obstacle6 = world.try_spawn_actor((vehicle_bp_library), spawn_point)
+        # vehicle_bp_library = world.get_blueprint_library().find('vehicle.carlamotors.firetruck')
+        # spawn_point = carla.Transform(carla.Location(x=-48.5, y = 86, z = 0.5), carla.Rotation(yaw=90))
+        # obstacle6 = world.try_spawn_actor((vehicle_bp_library), spawn_point)
 
-        vehicle_bp_library = world.get_blueprint_library().find('vehicle.tesla.cybertruck')
-        spawn_point = carla.Transform(carla.Location(x=-40.25, y = 55, z = 0.5), carla.Rotation(yaw=-90))
-        obstacle7 = world.try_spawn_actor((vehicle_bp_library), spawn_point)
+        # vehicle_bp_library = world.get_blueprint_library().find('vehicle.tesla.cybertruck')
+        # spawn_point = carla.Transform(carla.Location(x=-40.25, y = 55, z = 0.5), carla.Rotation(yaw=-90))
+        # obstacle7 = world.try_spawn_actor((vehicle_bp_library), spawn_point)
 
-        vehicle_bp_library = world.get_blueprint_library().find('vehicle.nissan.patrol')
-        spawn_point = carla.Transform(carla.Location(x=-48.5, y = 60, z = 0.5), carla.Rotation(yaw=90))
-        obstacle8 = world.try_spawn_actor((vehicle_bp_library), spawn_point)
+        # vehicle_bp_library = world.get_blueprint_library().find('vehicle.nissan.patrol')
+        # spawn_point = carla.Transform(carla.Location(x=-48.5, y = 60, z = 0.5), carla.Rotation(yaw=90))
+        # obstacle8 = world.try_spawn_actor((vehicle_bp_library), spawn_point)
 
         # --------------
         # Game loop. Prevents the script from finishing.
@@ -1266,10 +1416,24 @@ def main():
             #     writer_object.writerow(data[-1])  
             #     # Close the file object
             #     f_object.close()
+            if _ros_node is not None:
+                if rgb_image is not None:
+                    _pub_rgb.publish(np_to_img(_ros_node, rgb_image, "rgb8"))
+                _pub_depth.publish(np_to_img(_ros_node, depth_to_u8(depth_image), "mono8"))
+                _pub_segdepth.publish(np_to_img(_ros_node, depth_to_u8(processed_depth), "mono8"))
+                rclpy.spin_once(_ros_node, timeout_sec=0.0)
 
         #time.sleep(5)
 
     finally:
+
+        if rgb_camera is not None:
+            rgb_camera.stop(); rgb_camera.destroy()
+
+        if _ros_node is not None:
+            _ros_node.destroy_node()
+            rclpy.shutdown()
+
         # --------------
         # Stop recording and destroy actors
         # --------------
@@ -1350,28 +1514,28 @@ def main():
         if obstacle is not None:
             obstacle.destroy()
         
-        if obstacle1 is not None:
-            obstacle1.destroy()
+        # if obstacle1 is not None:
+        #     obstacle1.destroy()
         
-        if obstacle2 is not None:
-            obstacle2.destroy()
+        # if obstacle2 is not None:
+        #     obstacle2.destroy()
 
-        # # if obstacle3 is not None:
-        # #     obstacle3.destroy()
-        if obstacle4 is not None:
-            obstacle4.destroy()
+        # # # if obstacle3 is not None:
+        # # #     obstacle3.destroy()
+        # if obstacle4 is not None:
+        #     obstacle4.destroy()
 
-        if obstacle5 is not None:
-            obstacle5.destroy()
+        # if obstacle5 is not None:
+        #     obstacle5.destroy()
 
-        if obstacle6 is not None:
-            obstacle6.destroy()
+        # if obstacle6 is not None:
+        #     obstacle6.destroy()
 
-        if obstacle7 is not None:
-            obstacle7.destroy()
+        # if obstacle7 is not None:
+        #     obstacle7.destroy()
 
-        if obstacle8 is not None:
-            obstacle8.destroy()
+        # if obstacle8 is not None:
+        #     obstacle8.destroy()
 
         print("this is finished")
 
