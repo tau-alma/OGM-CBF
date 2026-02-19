@@ -36,6 +36,10 @@ def depth_to_u8(depth_m):
     u8[d == 255.0] = 255
     return u8
 
+def process_depth(depth_m):
+    print(f"depth min: {np.min(depth_m)}, max: {np.max(depth_m)}")
+    return depth_m
+
 try:
     sys.path.append(glob.glob('/opt/carla-simulator/PythonAPI/carla/dist/carla-*%d.%d-%s.egg' % (
         sys.version_info.major,
@@ -300,7 +304,18 @@ def apply_cbf(ego_vehicle):
 
     processed_depth = np.ones((IM_HEIGHT,IM_WIDTH)) * 255
     processed_depth[np.where(mask == 255)] = depth_image[np.where(mask == 255)]
-   
+
+    #print(f"depth min: {np.min(depth_image)}, max: {np.max(depth_image)}")
+    #print(f"processed depth min: {np.min(processed_depth)}, max: {np.max(processed_depth)}")
+
+    #processed_depth = np.zeros_like(processed_depth)
+    #print(f"i made it zero--------------------")
+
+    #print(f"depth min: {np.min(processed_depth)}, max: {np.max(processed_depth)}")
+
+    #plt.imshow(processed_depth)
+    #plt.show()
+
     processed_depth2 = np.ones((IM_HEIGHT,IM_WIDTH)) * 255
     processed_depth2[np.where(mask2 == 255)] = depth_image2[np.where(mask2 == 255)]
 
@@ -316,11 +331,13 @@ def apply_cbf(ego_vehicle):
 
     roi = int(64)
 
+    
+
     processed_depth[np.where(processed_depth<0.0009)] = 255
 
     worst_processed_depth = np.min(processed_depth[int(depth_image.shape[0]/2)-roi:int(depth_image.shape[0]/2)+roi,int(depth_image.shape[1]/2)-roi:int(depth_image.shape[1]/2)+roi], axis = 0)
     worst_processed_depth_locations = np.argmin(processed_depth[int(depth_image.shape[0]/2)-roi:int(depth_image.shape[0]/2)+roi,int(depth_image.shape[1]/2)-roi:int(depth_image.shape[1]/2)+roi], axis = 0)
-    
+    #print(f"worst_processed_depth: {worst_processed_depth}")
     #extracting worst cbf
     worst_cbfs = np.min(gussian[int(depth_image.shape[0]/2)-roi:int(depth_image.shape[0]/2)+roi,int(depth_image.shape[1]/2)-roi:int(depth_image.shape[1]/2)+roi], axis = 0)
     cbf_center_indx_2d= np.unravel_index((np.argmin(gussian[int(depth_image.shape[0]/2)-roi:int(depth_image.shape[0]/2)+roi,int(depth_image.shape[1]/2)-roi:int(depth_image.shape[1]/2)+roi])), [2*roi, 2*roi])
@@ -671,11 +688,12 @@ def array_to_vehicle_mask(image, camera_num = 1):
     result_gray = cv2.cvtColor(np.uint8(result), cv2.COLOR_BGR2GRAY)
     (thresh, blackAndWhiteImage) = cv2.threshold(result_gray, 127, 255, cv2.THRESH_BINARY)
 
+
     if camera_num == 1:
 
         mask = blackAndWhiteImage ## this is a binary image version of mask since for preprosessing depth this is used
         #mask_for_gaussian = result ## this is 3 channel geayscale version of mask since this is used in gaussian CBF and probably in GAN
-    
+        
     elif camera_num == 2:
 
         mask2 = blackAndWhiteImage ## this is a binary image version of mask since for preprosessing depth this is used
@@ -756,7 +774,6 @@ def controller(Vision, Vision2, Vision3, ego_vehicle):
 
     # Robot State in Global Coordinate
     (X, Y, Z) = (-car_transform.location.x, car_transform.location.y, car_transform.location.z)
-    
 
     #### converting state angle from quaternion to euler angles
     (pitch, yaw, roll)= (math.radians(car_transform.rotation.pitch), math.radians(car_transform.rotation.yaw), -math.radians(car_transform.rotation.roll))
@@ -824,7 +841,7 @@ def controller(Vision, Vision2, Vision3, ego_vehicle):
 
     ##------------------------- hyperparameters of the controller---------------------------------##
     relaxation = 1.0 # not used
-    C_alpha = 0.9#0.95 #-----   #more conservative is value of it is less. kamtar ya bishtar bepiche
+    C_alpha = 0.7#0.95 #-----   #more conservative is value of it is less. kamtar ya bishtar bepiche
     P_alpha = 1.0 #-----
     C_betha = 0.015#1.5#0.0005#0.015 
     A_betha = 0.025#2.5#0.0005#0.025 
@@ -836,16 +853,13 @@ def controller(Vision, Vision2, Vision3, ego_vehicle):
     P_gamma = 1.0
     C_eta = 1.0 # not used
     P_eta = 1.0 # not used
-    Vmax = 3.0
-    Vmin = -0.25
+    Vmax = +3.0
+    Vmin = +0.0
     Wmax = +4.0*np.pi
     Wmin = -4.0*np.pi
     Delta_ub = +0.5
     Delta_lb = -0.5
     heading = -np.pi/2
-
-    C_zeta = 0.085 #parameter of h_img
-    C_zeta_temp = 0.0
     ##--------------------------------------------------------------------------------------------##
 
     ##------------------------- CBF = h_img + h_d ------------------------------------------------##
@@ -854,27 +868,27 @@ def controller(Vision, Vision2, Vision3, ego_vehicle):
     CBF_3 = []
 
     ## note that we can drop h_img to avoid conservativeness 
-    # for i in range(5):
-    #     CBF.append(C_betha*(depth[i])**P_betha + A_betha*depth[i])
+    for i in range(5):
+        CBF.append(C_betha*(depth[i])**P_betha + A_betha*depth[i])
 
-    # for i in range(5):
-    #     CBF_2.append(C_betha*(depth_2[i])**P_betha + A_betha*depth_2[i])
+    for i in range(5):
+        CBF_2.append(C_betha*(depth_2[i])**P_betha + A_betha*depth_2[i])
     
-    # for i in range(5):
-    #     CBF_3.append(C_betha*(depth_3[i])**P_betha + A_betha*depth_3[i])
+    for i in range(5):
+        CBF_3.append(C_betha*(depth_3[i])**P_betha + A_betha*depth_3[i])
 
     
     ## Instead of the above lines, we can use the following lines where h_img is not dropped: 
-    
+    """
     for i in range(5):
-        CBF.append(C_zeta_temp*CBF_2D[i] + C_betha*(depth[i])**P_betha + A_betha*depth[i])
+        CBF.append(CBF_2D[i] + C_betha*(depth[i])**P_betha + A_betha*depth[i])
 
     for i in range(5):
-        CBF_2.append(C_zeta_temp*CBF_2D_2[i] + C_betha*(depth_2[i])**P_betha + A_betha*depth_2[i])
+        CBF_2.append(CBF_2D_2[i] + C_betha*(depth_2[i])**P_betha + A_betha*depth_2[i])
     
     for i in range(5):
-        CBF_3.append(C_zeta_temp*CBF_2D_3[i] + C_betha*(depth_3[i])**P_betha + A_betha*depth_3[i])
-    
+        CBF_3.append(CBF_2D_3[i] + C_betha*(depth_3[i])**P_betha + A_betha*depth_3[i])
+    """
     ##--------------------------------------------------------------------------------------------##
     
     
@@ -914,16 +928,13 @@ def controller(Vision, Vision2, Vision3, ego_vehicle):
 
 
 
-
-
     final_dCBF = []
 
     for i in range(5):
 
         final_dCBF.append(Rrot.dot(np.array([-(C_betha*P_betha*(final_depth[i])**(P_betha-1)+A_betha), -final_dCBF_2D[i][0], -final_dCBF_2D[i][1]])))
 
-    #print([-(C_betha*P_betha*(final_depth[i])**(P_betha-1)+A_betha), -C_zeta*final_dCBF_2D[i][0], -C_zeta*final_dCBF_2D[i][1]])
-    #print((C_betha*(final_depth[np.argmin(CBF)])**(P_betha)+A_betha*final_depth[np.argmin(CBF)]))
+    #print([-(C_betha*P_betha*(final_depth[i])**(P_betha-1)+A_betha), -final_dCBF_2D[i][0], -final_dCBF_2D[i][1]])
     ##--------------------------------------------------------------------------------------------##
     
     ##------------------------------------- Optimization Parameters ------------------------------##
@@ -967,80 +978,80 @@ def controller(Vision, Vision2, Vision3, ego_vehicle):
 
     if worst_camera_indx == 0:
         G[6][0] = -(-(C_betha*P_betha*(final_depth[0])**(P_betha-1)+A_betha))
-        G[6][1] = -(C_zeta*final_dCBF_2D[0][0]*(f/final_depth[0])*(X_cam_b+final_depth[0])+(C_betha*P_betha*(final_depth[0])**(P_betha-1)+A_betha)*Y_cam_b)
+        G[6][1] = -(final_dCBF_2D[0][0]*(f/final_depth[0])*(X_cam_b+final_depth[0])+(C_betha*P_betha*(final_depth[0])**(P_betha-1)+A_betha)*Y_cam_b)
         G[6][2] = 0     # No relaxation
         h[6] = C_alpha*final_CBF[0]**P_alpha
 
         G[7][0] = -(-(C_betha*P_betha*(final_depth[1])**(P_betha-1)+A_betha))
-        G[7][1] = -(C_zeta*final_dCBF_2D[1][0]*(f/final_depth[1])*(X_cam_b+final_depth[1])+(C_betha*P_betha*(final_depth[1])**(P_betha-1)+A_betha)*Y_cam_b)
+        G[7][1] = -(final_dCBF_2D[1][0]*(f/final_depth[1])*(X_cam_b+final_depth[1])+(C_betha*P_betha*(final_depth[1])**(P_betha-1)+A_betha)*Y_cam_b)
         G[7][2] = 0     # No relaxation
         h[7] = C_alpha*final_CBF[1]**P_alpha
 
         G[8][0] = -(-(C_betha*P_betha*(final_depth[2])**(P_betha-1)+A_betha))
-        G[8][1] = -(C_zeta*final_dCBF_2D[2][0]*(f/final_depth[2])*(X_cam_b+final_depth[2])+(C_betha*P_betha*(final_depth[2])**(P_betha-1)+A_betha)*Y_cam_b)
+        G[8][1] = -(final_dCBF_2D[2][0]*(f/final_depth[2])*(X_cam_b+final_depth[2])+(C_betha*P_betha*(final_depth[2])**(P_betha-1)+A_betha)*Y_cam_b)
         G[8][2] = 0     # No relaxation
         h[8] = C_alpha*final_CBF[2]**P_alpha
 
         G[9][0] = -(-(C_betha*P_betha*(final_depth[3])**(P_betha-1)+A_betha))
-        G[9][1] = -(C_zeta*final_dCBF_2D[3][0]*(f/final_depth[3])*(X_cam_b+final_depth[3])+(C_betha*P_betha*(final_depth[3])**(P_betha-1)+A_betha)*Y_cam_b)
+        G[9][1] = -(final_dCBF_2D[3][0]*(f/final_depth[3])*(X_cam_b+final_depth[3])+(C_betha*P_betha*(final_depth[3])**(P_betha-1)+A_betha)*Y_cam_b)
         G[9][2] = 0     # No relaxation
         h[9] = C_alpha*final_CBF[3]**P_alpha
         
         G[10][0] = -(-(C_betha*P_betha*(final_depth[4])**(P_betha-1)+A_betha))
-        G[10][1] = -(C_zeta*final_dCBF_2D[4][0]*(f/final_depth[4])*(X_cam_b+final_depth[4])+(C_betha*P_betha*(final_depth[4])**(P_betha-1)+A_betha)*Y_cam_b)
+        G[10][1] = -(final_dCBF_2D[4][0]*(f/final_depth[4])*(X_cam_b+final_depth[4])+(C_betha*P_betha*(final_depth[4])**(P_betha-1)+A_betha)*Y_cam_b)
         G[10][2] = 0    # No relaxation
         h[10] = C_alpha*final_CBF[4]**P_alpha
 
     if worst_camera_indx == 1:
-        G[6][0] = -(C_zeta*final_dCBF_2D[0][0]*(-(f/final_depth[0])*math.sin(math.radians(side_camera_angle))) -math.cos(math.radians(side_camera_angle))*(C_betha*P_betha*(final_depth[0])**(P_betha-1)+A_betha))
-        G[6][1] = -(C_zeta*final_dCBF_2D[0][0]*(f/final_depth[0])*(math.cos(math.radians(side_camera_angle))*X_cam_b+math.sin(math.radians(side_camera_angle))*Y_cam_b+final_depth[0])+(C_betha*P_betha*(final_depth[0])**(P_betha-1)+A_betha)*(-math.sin(math.radians(side_camera_angle))*X_cam_b+math.cos(math.radians(side_camera_angle))*Y_cam_b))
+        G[6][0] = -(final_dCBF_2D[0][0]*(-(f/final_depth[0])*math.sin(math.radians(side_camera_angle))) -math.cos(math.radians(side_camera_angle))*(C_betha*P_betha*(final_depth[0])**(P_betha-1)+A_betha))
+        G[6][1] = -(final_dCBF_2D[0][0]*(f/final_depth[0])*(math.cos(math.radians(side_camera_angle))*X_cam_b+math.sin(math.radians(side_camera_angle))*Y_cam_b+final_depth[0])+(C_betha*P_betha*(final_depth[0])**(P_betha-1)+A_betha)*(-math.sin(math.radians(side_camera_angle))*X_cam_b+math.cos(math.radians(side_camera_angle))*Y_cam_b))
         G[6][2] = 0     # No relaxation
         h[6] = C_alpha*final_CBF[0]**P_alpha
 
-        G[7][0] = -(C_zeta*final_dCBF_2D[1][0]*(-(f/final_depth[1])*math.sin(math.radians(side_camera_angle))) -math.cos(math.radians(side_camera_angle))*(C_betha*P_betha*(final_depth[1])**(P_betha-1)+A_betha))
-        G[7][1] = -(C_zeta*final_dCBF_2D[1][0]*(f/final_depth[1])*(math.cos(math.radians(side_camera_angle))*X_cam_b+math.sin(math.radians(side_camera_angle))*Y_cam_b+final_depth[1])+(C_betha*P_betha*(final_depth[1])**(P_betha-1)+A_betha)*(-math.sin(math.radians(side_camera_angle))*X_cam_b+math.cos(math.radians(side_camera_angle))*Y_cam_b))
+        G[7][0] = -(final_dCBF_2D[1][0]*(-(f/final_depth[1])*math.sin(math.radians(side_camera_angle))) -math.cos(math.radians(side_camera_angle))*(C_betha*P_betha*(final_depth[1])**(P_betha-1)+A_betha))
+        G[7][1] = -(final_dCBF_2D[1][0]*(f/final_depth[1])*(math.cos(math.radians(side_camera_angle))*X_cam_b+math.sin(math.radians(side_camera_angle))*Y_cam_b+final_depth[1])+(C_betha*P_betha*(final_depth[1])**(P_betha-1)+A_betha)*(-math.sin(math.radians(side_camera_angle))*X_cam_b+math.cos(math.radians(side_camera_angle))*Y_cam_b))
         G[7][2] = 0     # No relaxation
         h[7] = C_alpha*final_CBF[1]**P_alpha
 
-        G[8][0] = -(C_zeta*final_dCBF_2D[2][0]*(-(f/final_depth[2])*math.sin(math.radians(side_camera_angle))) -math.cos(math.radians(side_camera_angle))*(C_betha*P_betha*(final_depth[2])**(P_betha-1)+A_betha))
-        G[8][1] = -(C_zeta*final_dCBF_2D[2][0]*(f/final_depth[2])*(math.cos(math.radians(side_camera_angle))*X_cam_b+math.sin(math.radians(side_camera_angle))*Y_cam_b+final_depth[2])+(C_betha*P_betha*(final_depth[2])**(P_betha-1)+A_betha)*(-math.sin(math.radians(side_camera_angle))*X_cam_b+math.cos(math.radians(side_camera_angle))*Y_cam_b))
+        G[8][0] = -(final_dCBF_2D[2][0]*(-(f/final_depth[2])*math.sin(math.radians(side_camera_angle))) -math.cos(math.radians(side_camera_angle))*(C_betha*P_betha*(final_depth[2])**(P_betha-1)+A_betha))
+        G[8][1] = -(final_dCBF_2D[2][0]*(f/final_depth[2])*(math.cos(math.radians(side_camera_angle))*X_cam_b+math.sin(math.radians(side_camera_angle))*Y_cam_b+final_depth[2])+(C_betha*P_betha*(final_depth[2])**(P_betha-1)+A_betha)*(-math.sin(math.radians(side_camera_angle))*X_cam_b+math.cos(math.radians(side_camera_angle))*Y_cam_b))
         G[8][2] = 0     # No relaxation
         h[8] = C_alpha*final_CBF[2]**P_alpha
 
-        G[9][0] = -(C_zeta*final_dCBF_2D[3][0]*(-(f/final_depth[3])*math.sin(math.radians(side_camera_angle))) -math.cos(math.radians(side_camera_angle))*(C_betha*P_betha*(final_depth[3])**(P_betha-1)+A_betha))
-        G[9][1] = -(C_zeta*final_dCBF_2D[3][0]*(f/final_depth[3])*(math.cos(math.radians(side_camera_angle))*X_cam_b+math.sin(math.radians(side_camera_angle))*Y_cam_b+final_depth[3])+(C_betha*P_betha*(final_depth[3])**(P_betha-1)+A_betha)*(-math.sin(math.radians(side_camera_angle))*X_cam_b+math.cos(math.radians(side_camera_angle))*Y_cam_b))
+        G[9][0] = -(final_dCBF_2D[3][0]*(-(f/final_depth[3])*math.sin(math.radians(side_camera_angle))) -math.cos(math.radians(side_camera_angle))*(C_betha*P_betha*(final_depth[3])**(P_betha-1)+A_betha))
+        G[9][1] = -(final_dCBF_2D[3][0]*(f/final_depth[3])*(math.cos(math.radians(side_camera_angle))*X_cam_b+math.sin(math.radians(side_camera_angle))*Y_cam_b+final_depth[3])+(C_betha*P_betha*(final_depth[3])**(P_betha-1)+A_betha)*(-math.sin(math.radians(side_camera_angle))*X_cam_b+math.cos(math.radians(side_camera_angle))*Y_cam_b))
         G[9][2] = 0     # No relaxation
         h[9] = C_alpha*final_CBF[3]**P_alpha
         
-        G[10][0] = -(C_zeta*final_dCBF_2D[4][0]*(-(f/final_depth[4])*math.sin(math.radians(side_camera_angle))) -math.cos(math.radians(side_camera_angle))*(C_betha*P_betha*(final_depth[4])**(P_betha-1)+A_betha))
-        G[10][1] = -(C_zeta*final_dCBF_2D[4][0]*(f/final_depth[4])*(math.cos(math.radians(side_camera_angle))*X_cam_b+math.sin(math.radians(side_camera_angle))*Y_cam_b+final_depth[4])+(C_betha*P_betha*(final_depth[4])**(P_betha-1)+A_betha)*(-math.sin(math.radians(side_camera_angle))*X_cam_b+math.cos(math.radians(side_camera_angle))*Y_cam_b))
+        G[10][0] = -(final_dCBF_2D[4][0]*(-(f/final_depth[4])*math.sin(math.radians(side_camera_angle))) -math.cos(math.radians(side_camera_angle))*(C_betha*P_betha*(final_depth[4])**(P_betha-1)+A_betha))
+        G[10][1] = -(final_dCBF_2D[4][0]*(f/final_depth[4])*(math.cos(math.radians(side_camera_angle))*X_cam_b+math.sin(math.radians(side_camera_angle))*Y_cam_b+final_depth[4])+(C_betha*P_betha*(final_depth[4])**(P_betha-1)+A_betha)*(-math.sin(math.radians(side_camera_angle))*X_cam_b+math.cos(math.radians(side_camera_angle))*Y_cam_b))
         G[10][2] = 0    # No relaxation
         h[10] = C_alpha*final_CBF[4]**P_alpha
        
 
     if worst_camera_indx == 2:
-        G[6][0] = -(C_zeta*final_dCBF_2D[0][0]*(-(f/final_depth[0])*math.sin(math.radians(-side_camera_angle))) -math.cos(math.radians(-side_camera_angle))*(C_betha*P_betha*(final_depth[0])**(P_betha-1)+A_betha))
-        G[6][1] = -(C_zeta*final_dCBF_2D[0][0]*(f/final_depth[0])*(math.cos(math.radians(-side_camera_angle))*X_cam_b+math.sin(math.radians(-side_camera_angle))*Y_cam_b+final_depth[0])+(C_betha*P_betha*(final_depth[0])**(P_betha-1)+A_betha)*(-math.sin(math.radians(-side_camera_angle))*X_cam_b+math.cos(math.radians(-side_camera_angle))*Y_cam_b))
+        G[6][0] = -(final_dCBF_2D[0][0]*(-(f/final_depth[0])*math.sin(math.radians(-side_camera_angle))) -math.cos(math.radians(-side_camera_angle))*(C_betha*P_betha*(final_depth[0])**(P_betha-1)+A_betha))
+        G[6][1] = -(final_dCBF_2D[0][0]*(f/final_depth[0])*(math.cos(math.radians(-side_camera_angle))*X_cam_b+math.sin(math.radians(-side_camera_angle))*Y_cam_b+final_depth[0])+(C_betha*P_betha*(final_depth[0])**(P_betha-1)+A_betha)*(-math.sin(math.radians(-side_camera_angle))*X_cam_b+math.cos(math.radians(-side_camera_angle))*Y_cam_b))
         G[6][2] = 0     # No relaxation
         h[6] = C_alpha*final_CBF[0]**P_alpha
 
-        G[7][0] = -(C_zeta*final_dCBF_2D[1][0]*(-(f/final_depth[1])*math.sin(math.radians(-side_camera_angle))) -math.cos(math.radians(-side_camera_angle))*(C_betha*P_betha*(final_depth[1])**(P_betha-1)+A_betha))
-        G[7][1] = -(C_zeta*final_dCBF_2D[1][0]*(f/final_depth[1])*(math.cos(math.radians(-side_camera_angle))*X_cam_b+math.sin(math.radians(-side_camera_angle))*Y_cam_b+final_depth[1])+(C_betha*P_betha*(final_depth[1])**(P_betha-1)+A_betha)*(-math.sin(math.radians(-side_camera_angle))*X_cam_b+math.cos(math.radians(-side_camera_angle))*Y_cam_b))
+        G[7][0] = -(final_dCBF_2D[1][0]*(-(f/final_depth[1])*math.sin(math.radians(-side_camera_angle))) -math.cos(math.radians(-side_camera_angle))*(C_betha*P_betha*(final_depth[1])**(P_betha-1)+A_betha))
+        G[7][1] = -(final_dCBF_2D[1][0]*(f/final_depth[1])*(math.cos(math.radians(-side_camera_angle))*X_cam_b+math.sin(math.radians(-side_camera_angle))*Y_cam_b+final_depth[1])+(C_betha*P_betha*(final_depth[1])**(P_betha-1)+A_betha)*(-math.sin(math.radians(-side_camera_angle))*X_cam_b+math.cos(math.radians(-side_camera_angle))*Y_cam_b))
         G[7][2] = 0     # No relaxation
         h[7] = C_alpha*final_CBF[1]**P_alpha
 
-        G[8][0] = -(C_zeta*final_dCBF_2D[2][0]*(-(f/final_depth[2])*math.sin(math.radians(-side_camera_angle))) -math.cos(math.radians(-side_camera_angle))*(C_betha*P_betha*(final_depth[2])**(P_betha-1)+A_betha))
-        G[8][1] = -(C_zeta*final_dCBF_2D[2][0]*(f/final_depth[2])*(math.cos(math.radians(-side_camera_angle))*X_cam_b+math.sin(math.radians(-side_camera_angle))*Y_cam_b+final_depth[2])+(C_betha*P_betha*(final_depth[2])**(P_betha-1)+A_betha)*(-math.sin(math.radians(-side_camera_angle))*X_cam_b+math.cos(math.radians(-side_camera_angle))*Y_cam_b))
+        G[8][0] = -(final_dCBF_2D[2][0]*(-(f/final_depth[2])*math.sin(math.radians(-side_camera_angle))) -math.cos(math.radians(-side_camera_angle))*(C_betha*P_betha*(final_depth[2])**(P_betha-1)+A_betha))
+        G[8][1] = -(final_dCBF_2D[2][0]*(f/final_depth[2])*(math.cos(math.radians(-side_camera_angle))*X_cam_b+math.sin(math.radians(-side_camera_angle))*Y_cam_b+final_depth[2])+(C_betha*P_betha*(final_depth[2])**(P_betha-1)+A_betha)*(-math.sin(math.radians(-side_camera_angle))*X_cam_b+math.cos(math.radians(-side_camera_angle))*Y_cam_b))
         G[8][2] = 0     # No relaxation
         h[8] = C_alpha*final_CBF[2]**P_alpha
 
-        G[9][0] = -(C_zeta*final_dCBF_2D[3][0]*(-(f/final_depth[3])*math.sin(math.radians(-side_camera_angle))) -math.cos(math.radians(-side_camera_angle))*(C_betha*P_betha*(final_depth[3])**(P_betha-1)+A_betha))
-        G[9][1] = -(C_zeta*final_dCBF_2D[3][0]*(f/final_depth[3])*(math.cos(math.radians(-side_camera_angle))*X_cam_b+math.sin(math.radians(-side_camera_angle))*Y_cam_b+final_depth[3])+(C_betha*P_betha*(final_depth[3])**(P_betha-1)+A_betha)*(-math.sin(math.radians(-side_camera_angle))*X_cam_b+math.cos(math.radians(-side_camera_angle))*Y_cam_b))
+        G[9][0] = -(final_dCBF_2D[3][0]*(-(f/final_depth[3])*math.sin(math.radians(-side_camera_angle))) -math.cos(math.radians(-side_camera_angle))*(C_betha*P_betha*(final_depth[3])**(P_betha-1)+A_betha))
+        G[9][1] = -(final_dCBF_2D[3][0]*(f/final_depth[3])*(math.cos(math.radians(-side_camera_angle))*X_cam_b+math.sin(math.radians(-side_camera_angle))*Y_cam_b+final_depth[3])+(C_betha*P_betha*(final_depth[3])**(P_betha-1)+A_betha)*(-math.sin(math.radians(-side_camera_angle))*X_cam_b+math.cos(math.radians(-side_camera_angle))*Y_cam_b))
         G[9][2] = 0     # No relaxation
         h[9] = C_alpha*final_CBF[3]**P_alpha
         
-        G[10][0] = -(C_zeta*final_dCBF_2D[4][0]*(-(f/final_depth[4])*math.sin(math.radians(-side_camera_angle))) -math.cos(math.radians(-side_camera_angle))*(C_betha*P_betha*(final_depth[4])**(P_betha-1)+A_betha))
-        G[10][1] = -(C_zeta*final_dCBF_2D[4][0]*(f/final_depth[4])*(math.cos(math.radians(-side_camera_angle))*X_cam_b+math.sin(math.radians(-side_camera_angle))*Y_cam_b+final_depth[4])+(C_betha*P_betha*(final_depth[4])**(P_betha-1)+A_betha)*(-math.sin(math.radians(-side_camera_angle))*X_cam_b+math.cos(math.radians(-side_camera_angle))*Y_cam_b))
+        G[10][0] = -(final_dCBF_2D[4][0]*(-(f/final_depth[4])*math.sin(math.radians(-side_camera_angle))) -math.cos(math.radians(-side_camera_angle))*(C_betha*P_betha*(final_depth[4])**(P_betha-1)+A_betha))
+        G[10][1] = -(final_dCBF_2D[4][0]*(f/final_depth[4])*(math.cos(math.radians(-side_camera_angle))*X_cam_b+math.sin(math.radians(-side_camera_angle))*Y_cam_b+final_depth[4])+(C_betha*P_betha*(final_depth[4])**(P_betha-1)+A_betha)*(-math.sin(math.radians(-side_camera_angle))*X_cam_b+math.cos(math.radians(-side_camera_angle))*Y_cam_b))
         G[10][2] = 0     # No relaxation
         h[10] = C_alpha*final_CBF[4]**P_alpha
        
@@ -1048,10 +1059,10 @@ def controller(Vision, Vision2, Vision3, ego_vehicle):
 
     ## making matrices of G and h to satisfy the CLF condition
 
-    G[11][0] = 0
-    G[11][1] = (psii-heading)
-    G[11][2] = -1     # relaxation
-    h[11] = -C_gamma*V**P_gamma
+    # G[11][0] = 0
+    # G[11][1] = (psii-heading)
+    # G[11][2] = -1     # relaxation
+    # h[11] = -C_gamma*V**P_gamma
 
 
     
@@ -1060,7 +1071,7 @@ def controller(Vision, Vision2, Vision3, ego_vehicle):
         [vel, dPsi, Delta] = solve_qp(P, q, G, h, solver='quadprog')
         #print(f"dpsi is {dPsi} and vel is {vel} and delta is {Delta}")
         #print with two decimal digits
-        print(f"dpsi is {dPsi:.2f} and vel is {vel:.2f}")
+        #print(f"dpsi is {dPsi:.2f} and vel is {vel:.2f}")
 
     ## Error handling in case of infeasibility
     except:
@@ -1165,6 +1176,8 @@ def controller(Vision, Vision2, Vision3, ego_vehicle):
 def main():
 
     global side_camera_angle, fov
+    global _ros_node, _pub_rgb, _pub_depth, _pub_segdepth
+    global processed_depth
 
     argparser = argparse.ArgumentParser(
         description=__doc__)
@@ -1224,7 +1237,7 @@ def main():
         ego_bp.set_attribute('color',ego_color)
         print('\nEgo color is set')
 
-        transform = carla.Transform(carla.Location(x=-43.5, y = 110, z = 0.5), carla.Rotation(yaw=-90))
+        transform = carla.Transform(carla.Location(x=-45.5, y = 110, z = 0.5), carla.Rotation(yaw=-90))
         ego_vehicle = world.spawn_actor(ego_bp, transform)
 
         # ---------------------adding RGB camera blueprint---------------------------------
@@ -1420,7 +1433,8 @@ def main():
                 if rgb_image is not None:
                     _pub_rgb.publish(np_to_img(_ros_node, rgb_image, "rgb8"))
                 _pub_depth.publish(np_to_img(_ros_node, depth_to_u8(depth_image), "mono8"))
-                _pub_segdepth.publish(np_to_img(_ros_node, depth_to_u8(processed_depth), "mono8"))
+                #print(f"IN MAIN processed depth min is {processed_depth.min()} and max is {processed_depth.max()}")
+                _pub_segdepth.publish(np_to_img(_ros_node, depth_to_u8(processed_depth3), "mono8"))
                 rclpy.spin_once(_ros_node, timeout_sec=0.0)
 
         #time.sleep(5)
