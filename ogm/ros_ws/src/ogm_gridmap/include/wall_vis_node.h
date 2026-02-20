@@ -25,6 +25,9 @@ class WallVisNode  : public rclcpp::Node
 
     int dilation_size;
 
+    bool show_dst;
+    float max_dst;
+
     // FF6F3C
     const static uint8_t FREE_R = 255;
     const static uint8_t FREE_G = (6 << 4) | (15);
@@ -34,9 +37,12 @@ class WallVisNode  : public rclcpp::Node
     const static uint8_t WALL_G = 0;
     const static uint8_t WALL_B = 0;
     // 
-    const static uint8_t DILATE_R = 255;
-    const static uint8_t DILATE_G = 216;
-    const static uint8_t DILATE_B = 0;
+    //const static uint8_t DILATE_R = 255;
+    //const static uint8_t DILATE_G = 216;
+    //const static uint8_t DILATE_B = 0;
+    const static uint8_t DILATE_R = 127;
+    const static uint8_t DILATE_G = 127;
+    const static uint8_t DILATE_B = 127;
 
     Eigen::Matrix4f get_T_matrix(
       float x, float y, float z,
@@ -106,7 +112,26 @@ class WallVisNode  : public rclcpp::Node
       //cv::imshow("Inlated obstacles", inflated_obst_image);
       //cv::waitKey(100); 
 
+
+      cv::Mat distance_image;
+      cv::distanceTransform(255-inflated_obst_image, distance_image, cv::DIST_L2, 3, CV_32F);
+      distance_image = distance_image  * res;
+
+      cv::threshold(distance_image, distance_image, max_dst, max_dst, cv::THRESH_TRUNC);
+      cv::normalize(distance_image, distance_image, 0, 255.0, cv::NORM_MINMAX);
+
+
+      cv::Mat distance_image_8uc1;
+      distance_image.convertTo(distance_image_8uc1, CV_8UC1);
+
+      cv::Mat distance_cmap_image;
+      cv::applyColorMap(255 - distance_image_8uc1, distance_cmap_image, cv::COLORMAP_JET);
+
+      //cv::imshow("Distance", distance_cmap_image);
+      //cv::waitKey(100); 
+
       std::vector<Eigen::Vector4f> pts;
+      std::vector<Eigen::Vector<uint8_t,3>> colors;
       for (int i = 0; i < h*w; ++i)
       {
         int _x = (i % w);
@@ -118,16 +143,46 @@ class WallVisNode  : public rclcpp::Node
         if (p_occ > thr_obst)
         {
           for (float z = 0; z <= wall_height; z += res)
+          {
             pts.push_back(Eigen::Vector4f(x, y, z, 1.));
+            Eigen::Vector<uint8_t,3> rgb;
+            rgb(0) = WallVisNode::WALL_R;
+            rgb(1) = WallVisNode::WALL_G;
+            rgb(2) = WallVisNode::WALL_B;
+            colors.push_back(rgb);
+          }
         }
         else if (inflated_obst_image.at<uint8_t>(_y, _x) > thr_obst*255)
         {
           for (float z = 0; z <= clearance_height ; z += res)
+          {
             pts.push_back(Eigen::Vector4f(x, y, z, .5));
+            Eigen::Vector<uint8_t,3> rgb;
+            rgb(0) = WallVisNode::DILATE_R;
+            rgb(1) = WallVisNode::DILATE_G;
+            rgb(2) = WallVisNode::DILATE_B;
+            colors.push_back(rgb);
+          }
         }
         else if (p_occ < thr_free)
         {
           pts.push_back(Eigen::Vector4f(x, y, 0., 0.));
+          Eigen::Vector<uint8_t,3> rgb;
+          //rgb << WallVisNode::WALL_R,  WallVisNode::WALL_G,  WallVisNode::WALL_B;
+          if (show_dst) 
+          {
+            cv::Vec3b pixel = distance_cmap_image.at<cv::Vec3b>(_y, _x); 
+            rgb(0) = pixel(2);
+            rgb(1) = pixel(1);
+            rgb(2) = pixel(0);
+          }
+          else
+          {
+            rgb(0) = WallVisNode::FREE_R;
+            rgb(1) = WallVisNode::FREE_G;
+            rgb(2) = WallVisNode::FREE_B;
+          }
+          colors.push_back(rgb);
         }
       }
 
@@ -172,10 +227,10 @@ class WallVisNode  : public rclcpp::Node
         for (uint8_t * byteptr = (uint8_t *) &y_val; byteptr < ((uint8_t *) &y_val) + 4; byteptr++) pc2msg.data.push_back(*byteptr);
         float z_val = pts.at(i)(2);
         for (uint8_t * byteptr = (uint8_t *) &z_val; byteptr < ((uint8_t *) &z_val) + 4; byteptr++) pc2msg.data.push_back(*byteptr);
-        uint32_t rgb_val;
-        if (pts.at(i)(3) > .99) rgb_val = (WallVisNode::WALL_R << 16) | (WallVisNode::WALL_G << 8) | (WallVisNode::WALL_B);
+        uint32_t rgb_val = (colors.at(i)(0) << 16) | (colors.at(i)(1) << 8) | (colors.at(i)(2));
+        /*if (pts.at(i)(3) > .99) rgb_val = (WallVisNode::WALL_R << 16) | (WallVisNode::WALL_G << 8) | (WallVisNode::WALL_B);
         else if (pts.at(i)(3) > .49) rgb_val = (WallVisNode::DILATE_R << 16) | (WallVisNode::DILATE_G << 8) | (WallVisNode::DILATE_B);
-        else rgb_val = (WallVisNode::FREE_R << 16) | (WallVisNode::FREE_G << 8) | (WallVisNode::FREE_B);
+        else rgb_val = (WallVisNode::FREE_R << 16) | (WallVisNode::FREE_G << 8) | (WallVisNode::FREE_B);*/
         for (uint8_t * byteptr = (uint8_t *) &rgb_val; byteptr < ((uint8_t *) &rgb_val) + 4; byteptr++) pc2msg.data.push_back(*byteptr);
       }
 
@@ -208,6 +263,12 @@ class WallVisNode  : public rclcpp::Node
 
       dilation_size = this->declare_parameter("dilation_size", 7);
       RCLCPP_INFO(this->get_logger(), "dilation_size: %d", dilation_size);
+
+      show_dst = this->declare_parameter("show_dst", false);
+      RCLCPP_INFO(this->get_logger(), "show_dst: %x", show_dst);
+      
+      max_dst = this->declare_parameter("max_dst", 5.0);
+      RCLCPP_INFO(this->get_logger(), "max_dst: %f", max_dst);
 
       pub_pcd = this->create_publisher<sensor_msgs::msg::PointCloud2>(
 		      "pcd",

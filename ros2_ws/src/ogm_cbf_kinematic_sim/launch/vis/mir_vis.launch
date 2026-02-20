@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <arg name="use_sim_time" default="true" />
+  <arg name="pwd" default="$(dirname)" />
+
+  <include file="$(find-pkg-share mir_gazebo)/launch/description.launch.py">
+    <arg name="use_sim_time" value="$(var use_sim_time)"/>
+  </include>
+
+</launch>
