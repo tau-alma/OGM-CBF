@@ -1,0 +1,53 @@
+/odom_in_map:
+        reliability: best_effort
+        durability: volatile
+        history: keep_last
+        depth: 5     
+
+/ogm/gridmap:
+        reliability: best_effort
+        durability: volatile
+        history: keep_last
+        depth: 5     
+                         
+/ogm/imgmap:
+        reliability: best_effort
+        durability: volatile
+        history: keep_last
+        depth: 5     
+                                     
+/ogm/points/in_back_laser_link:
+        reliability: best_effort
+        durability: volatile
+        history: keep_last
+        depth: 5     
+                                                 
+/ogm/points/in_front_laser_link:
+        reliability: best_effort
+        durability: volatile
+        history: keep_last
+        depth: 5     
+                                                             
+/ogm/points/in_odom:
+        reliability: best_effort
+        durability: volatile
+        history: keep_last
+        depth: 5  
+
+/ogm/points/in_map:
+        reliability: best_effort
+        durability: volatile
+        history: keep_last
+        depth: 5 
+
+/carla/ego_vehicle/rgb_depth/points:
+        reliability: best_effort
+        durability: volatile
+        history: keep_last
+        depth: 5
+
+/ogm/occupancy_img:
+        reliability: best_effort
+        durability: volatile
+        history: keep_last
+        depth: 5   

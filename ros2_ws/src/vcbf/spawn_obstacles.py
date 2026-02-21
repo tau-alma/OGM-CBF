@@ -29,9 +29,9 @@ def spawn_two_cars(
     # per obstacle: (model, (x,y,z), base_yaw_deg, sigma_x_m, sigma_y_m, sigma_yaw_deg)
     # set any sigma_* to None => uses defaults from CLI
     base_spawn_data = [
-        ("vehicle.dodge.charger_police_2020", (-40.75, 95.0, 0.5), 45.0, 0.0, 0.0, 0.0),
-        ("vehicle.dodge.charger_police_2020", (-45.5, 82.0, 0.5), -90, 0.0, 0.0, 0.0),
-        ("vehicle.dodge.charger_police_2020", (-47.0, 90.0, 0.5), -90, 0.0, 0.0, 0.0),  # uses defaults
+        ("vehicle.dodge.charger_police_2020", (-41.0+1.25, 64.0, 0.5), 45.0, 0.0, 0.0, 0.0),
+        ("vehicle.dodge.charger_police_2020", (-45.5+1.25, 51.0, 0.5), -90, 0.0, 0.0, 0.0),
+        ("vehicle.dodge.charger_police_2020", (-47.0+1.25, 59.0, 0.5), -90, 0.0, 0.0, 0.0),  # uses defaults
     ]
 
     blueprint_library = world.get_blueprint_library()

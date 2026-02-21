@@ -19,6 +19,7 @@ def np_to_img(node, arr, encoding, frame_id="vcbf_cam0"):
     msg = RosImage()
     msg.header.stamp = node.get_clock().now().to_msg()
     msg.header.frame_id = frame_id
+    #print(f"arr shape: {arr.shape}, dtype: {arr.dtype}")
     msg.height, msg.width = arr.shape[:2]
     msg.encoding = encoding
     msg.step = msg.width if encoding == "mono8" else msg.width * 3
@@ -60,7 +61,7 @@ from qpsolvers import solve_qp
 import math
 from copy import deepcopy
 from PIL import Image
-
+import numpy
 from time import monotonic
 
 def clamp(x, lo, hi):
@@ -85,6 +86,8 @@ LL_THR_RATE = 3.0
 LL_BRK_RATE = 6.0
 LL_ALPHA = 0.2          # speed LPF alpha
 LL_DEADBAND = 0.05      # m/s
+
+depth_ros = None#np.zeros((128, 128), dtype=np.float32)
 
 # persistent low-level state (kept across controller() calls)
 _ll = {
@@ -128,7 +131,50 @@ def ll_compute_longitudinal(v_ref, v_meas, dt):
 
     return float(clamp(thr, 0.0, 1.0)), float(clamp(brk, 0.0, 1.0))
 
+def get_carla_image_data_array(carla_image):
+        global depth_ros
+        """
+        Function (override) to convert the carla image to a numpy data array
+        as input for the cv_bridge.cv2_to_imgmsg() function
 
+        The depth camera raw image is converted to a linear depth image
+        having 1-channel float32.
+
+        :param carla_image: carla image object
+        :type carla_image: carla.Image
+        :return tuple (numpy data array containing the image information, encoding)
+        :rtype tuple(numpy.ndarray, string)
+        """
+
+        # color conversion within C++ code is broken, when transforming a
+        #  4-channel uint8 color pixel into a 1-channel float32 grayscale pixel
+        # therefore, we do it on our own here
+        #
+        # @todo: After fixing https://github.com/carla-simulator/carla/issues/1041
+        # the final code in here should look like:
+        #
+        # carla_image.convert(carla.ColorConverter.Depth)
+        #
+        # carla_image_data_array = numpy.ndarray(
+        #    shape=(carla_image.height, carla_image.width, 1),
+        #    dtype=numpy.float32, buffer=carla_image.raw_data)
+        #
+        bgra_image = numpy.ndarray(
+            shape=(carla_image.height, carla_image.width, 4),
+            dtype=numpy.uint8, buffer=carla_image.raw_data)
+
+        # Apply (R + G * 256 + B * 256 * 256) / (256**3 - 1) * 1000
+        # according to the documentation:
+        # https://carla.readthedocs.io/en/latest/cameras_and_sensors/#camera-depth-map
+        scales = numpy.array([65536.0, 256.0, 1.0, 0]) / (256**3 - 1) * 1000
+        depth_image = numpy.dot(bgra_image, scales).astype(numpy.float32)
+
+        depth_ros = depth_image
+        
+
+        # actually we want encoding '32FC1'
+        # which is automatically selected by cv bridge with passthrough
+        return depth_image, 'passthrough'
 
 # from keras.models import load_model
 # from tensorflow.image import resize
@@ -147,7 +193,7 @@ data = []
 
 
 
-IM_WIDTH = 128           # width size of image
+IM_WIDTH = 128          # width size of image
 IM_HEIGHT = 128          # hight size of image
 delta_dist = 3           # distance to the center of CBF image, pixels with this distance will be extracted and used in CBF
 count = 0                # global counter for saving data
@@ -1178,6 +1224,7 @@ def main():
     global side_camera_angle, fov
     global _ros_node, _pub_rgb, _pub_depth, _pub_segdepth
     global processed_depth
+    global depth_ros
 
     argparser = argparse.ArgumentParser(
         description=__doc__)
@@ -1203,9 +1250,9 @@ def main():
 
         world = client.get_world()
         settings = world.get_settings()
-        settings.fixed_delta_seconds = 0.05
+        #settings.fixed_delta_seconds = 0.05
         #settings.synchronous_mode = True
-        world.apply_settings(settings)
+        #world.apply_settings(settings)
 
         ego_vehicle = None
         ego_cam = None
@@ -1225,6 +1272,8 @@ def main():
 
         rgb_camera = None  # add with other sensor vars
 
+        high_res_size = 720
+
 
         # --------------
         # Spawn ego vehicle
@@ -1237,16 +1286,10 @@ def main():
         ego_bp.set_attribute('color',ego_color)
         print('\nEgo color is set')
 
-        transform = carla.Transform(carla.Location(x=-45.5, y = 110, z = 0.5), carla.Rotation(yaw=-90))
+        transform = carla.Transform(carla.Location(x=-44.5, y = 83, z = 0.5), carla.Rotation(yaw=-90))
         ego_vehicle = world.spawn_actor(ego_bp, transform)
 
-        # ---------------------adding RGB camera blueprint---------------------------------
-        rgb_camera_bp =  world.get_blueprint_library().find('sensor.camera.rgb')
-        rgb_camera_bp.set_attribute("image_size_x", str(IM_WIDTH))
-        rgb_camera_bp.set_attribute("image_size_y", str(IM_HEIGHT))
-        rgb_camera_bp.set_attribute("fov", str(fov))
-        #----------------------------------------------------------------------------------
-
+        
         #----------------------adding semantic segmentation blueprint----------------------
         instance_camera_bp = None
         instance_camera_bp = world.get_blueprint_library().find('sensor.camera.semantic_segmentation')
@@ -1263,12 +1306,23 @@ def main():
         depth_camera_bp.set_attribute("fov", str(fov))
         #-----------------------------------------------------------------------------------
 
-        cam_location1 = carla.Location(x=2.4, y=0, z=0.5)
-        cam_rotation1 = carla.Rotation(yaw=0)
-        cam_transform1 = carla.Transform(cam_location1, cam_rotation1)
-        rgb_camera = world.try_spawn_actor(rgb_camera_bp, cam_transform1, attach_to=ego_vehicle,
-                                        attachment_type=carla.AttachmentType.Rigid)
-        rgb_camera.listen(rgb_to_array)
+                #-------------------adding depth sensor blueprint----------------------------------
+        depth_camera_bp_hr = None
+        depth_camera_bp_hr =  world.get_blueprint_library().find('sensor.camera.depth')
+        depth_camera_bp_hr.set_attribute("image_size_x", str(high_res_size))
+        depth_camera_bp_hr.set_attribute("image_size_y", str(high_res_size))
+        depth_camera_bp_hr.set_attribute("fov", str(fov))
+        #
+
+        # ---------------------adding RGB camera blueprint---------------------------------
+        rgb_camera_bp =  world.get_blueprint_library().find('sensor.camera.rgb')
+        rgb_camera_bp.set_attribute("image_size_x", str(high_res_size))
+        rgb_camera_bp.set_attribute("image_size_y", str(high_res_size))
+        rgb_camera_bp.set_attribute("fov", str(fov))
+        #----------------------------------------------------------------------------------
+
+
+        
 
 
         rclpy.init(args=None)
@@ -1354,6 +1408,22 @@ def main():
         depth_camera3.listen(lambda image: depth_to_array(image, camera_num = 3))
 
 
+        # depth for ros2        
+        cam_location = carla.Location(x = 2.4, y = 0, z = 0.5)
+        cam_rotation = carla.Rotation(yaw = 0.0)
+        cam_transform = carla.Transform(cam_location,cam_rotation)
+        depth_camera_ros = world.try_spawn_actor( depth_camera_bp_hr, cam_transform, attach_to = ego_vehicle, attachment_type = carla.AttachmentType.Rigid ) 
+        depth_camera_ros.listen(lambda image: get_carla_image_data_array(image))
+
+        cam_location1 = carla.Location(x=2.4, y=0, z=0.5)
+        cam_rotation1 = carla.Rotation(yaw=0)
+        cam_transform1 = carla.Transform(cam_location1, cam_rotation1)
+        rgb_camera = world.try_spawn_actor(rgb_camera_bp, cam_transform1, attach_to=ego_vehicle,
+                                        attachment_type=carla.AttachmentType.Rigid)
+        rgb_camera.listen(rgb_to_array)
+
+
+
 
         # --------------
         # adding random vehicles in the environment to challnge
@@ -1432,8 +1502,9 @@ def main():
             if _ros_node is not None:
                 if rgb_image is not None:
                     _pub_rgb.publish(np_to_img(_ros_node, rgb_image, "rgb8"))
-                _pub_depth.publish(np_to_img(_ros_node, depth_to_u8(depth_image), "mono8"))
-                #print(f"IN MAIN processed depth min is {processed_depth.min()} and max is {processed_depth.max()}")
+                if depth_ros is not None:
+                    _pub_depth.publish(np_to_img(_ros_node, depth_ros, "32FC1"))
+                    #print(f"IN MAIN processed depth min is {processed_depth.min()} and max is {processed_depth.max()}")
                 _pub_segdepth.publish(np_to_img(_ros_node, depth_to_u8(processed_depth3), "mono8"))
                 rclpy.spin_once(_ros_node, timeout_sec=0.0)
 
