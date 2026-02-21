@@ -5,6 +5,12 @@ ros2_ws/log/
 ros2_ws/.colcon/
 ros2_ws/.colcon_install_cache/
 ros2_ws/log_latest/
+ros2_ws/src/build/
+ros2_ws/src/install/
+ros2_ws/src/log/
+ros2_ws/src/.colcon/
+ros2_ws/src/.colcon_install_cache/
+ros2_ws/src/log_latest/
 
 # === WandB ===
 wandb/
