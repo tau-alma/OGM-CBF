@@ -4,10 +4,14 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
+#include "sensor_msgs/msg/image.hpp"
+#include <image_transport/image_transport.hpp>
+#include "std_msgs/msg/header.hpp"
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
+#include "cv_bridge/cv_bridge.h"
 #include <opencv2/opencv.hpp>
 
 class WallVisNode  : public rclcpp::Node
@@ -15,7 +19,10 @@ class WallVisNode  : public rclcpp::Node
   private:
     
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr sub_grid;
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr sub_img;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_pcd;
+
+    float image_resolution;
 
     float wall_height;
     float clearance_height;
@@ -67,6 +74,30 @@ class WallVisNode  : public rclcpp::Node
       return T;
     }
 
+    void callback_img(const sensor_msgs::msg::Image::SharedPtr msg_img)
+    {
+      cv_bridge::CvImagePtr cv_ptr;
+      cv_ptr = cv_bridge::toCvCopy(msg_img, "mono8");
+
+      //cv::imshow("Input", cv_ptr->image);
+      //cv::waitKey(100); 
+
+      uint32_t h = msg_img->height;
+      uint32_t w = msg_img->width;
+      float res = image_resolution;
+
+      std::vector<int8_t> prob8;
+      for (int i = 0; i < h; ++i)
+      {
+        for (int j = 0; j < w; ++j)
+        {
+          prob8.push_back(cv_ptr->image.at<uint8_t>(h-i-1, j)/2);
+        }
+      }
+
+      process(prob8, h, w, res, msg_img->header);
+    }
+
     void callback_grid(
         const nav_msgs::msg::OccupancyGrid::SharedPtr msg_grid
         )
@@ -85,11 +116,24 @@ class WallVisNode  : public rclcpp::Node
       uint32_t w = msg_grid->info.width;
       float res = msg_grid->info.resolution;
       
+      std::vector<int8_t> prob8;
+      for (int i = 0; i < h*w; ++i)
+        prob8.push_back(msg_grid->data[i]);
+
+      process(prob8, h, w, res, msg_grid->header);
+    }
+
+      void process(
+          std::vector<int8_t>& prob8,
+          uint32_t h, uint32_t w, float res,
+          std_msgs::msg::Header& header
+          )
+      {
 
       std::vector<uint8_t> raw;
       for (int i = 0; i < h*w; ++i)
       {
-        if (msg_grid->data[i] > thr_obst*127) raw.push_back(255);
+        if (prob8[i] > thr_obst*127) raw.push_back(255);
         else raw.push_back(0);
       }
 
@@ -138,7 +182,7 @@ class WallVisNode  : public rclcpp::Node
         int _y = (i / w);
         float x = _x*res;
         float y = _y*res;
-        float p_occ = float(msg_grid->data[i]) / 127;
+        float p_occ = float(prob8.at(i)) / 127;
         
         if (p_occ > thr_obst)
         {
@@ -240,7 +284,7 @@ class WallVisNode  : public rclcpp::Node
       pc2msg.width = pts.size();
       pc2msg.row_step = pc2msg.width*pc2msg.point_step;
 
-      pc2msg.header = msg_grid->header;
+      pc2msg.header = header;
 
       pub_pcd->publish(pc2msg);
     }
@@ -248,6 +292,9 @@ class WallVisNode  : public rclcpp::Node
   public:
     WallVisNode() : Node("gridmap")
     {
+
+      image_resolution = this->declare_parameter("image_resolution", 0.1);
+      RCLCPP_INFO(this->get_logger(), "image_resolution: %f", image_resolution);
 
       wall_height = this->declare_parameter("wall_height", 1.0);
       RCLCPP_INFO(this->get_logger(), "wall_height: %f", wall_height);
@@ -279,6 +326,12 @@ class WallVisNode  : public rclcpp::Node
 		      "gridmap",
 		      rclcpp::QoS(rclcpp::SensorDataQoS()),
 		      std::bind(&WallVisNode::callback_grid, this, std::placeholders::_1)
+		      );
+
+      sub_img = this->create_subscription<sensor_msgs::msg::Image>(
+		      "imgmap",
+		      rclcpp::QoS(rclcpp::SensorDataQoS()),
+		      std::bind(&WallVisNode::callback_img, this, std::placeholders::_1)
 		      );
 
     }

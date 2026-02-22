@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <arg name="use_sim_time" default="true" />
+  <arg name="pwd" default="$(dirname)" />
+
+  <node pkg="ogm_gridmap" exec="wall_vis" name="wall_vis">
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+    <param name="image_resolution" value="0.1"/>
+    <param name="wall_height" value="1.0"/>
+    <param name="clearance_height" value="1.0"/>
+    <param name="dilation_size" value="20"/>
+    <param name="show_dst" value="false"/>
+    <!--remap from="gridmap" to="/ogm/gridmap"/-->
+    <remap from="imgmap" to="/ogm/occupancy_img"/>
+  </node>
+
+  <node pkg="rviz2" exec="rviz2" name="rviz" args="-d $(var pwd)/carla_view.rviz">
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+  </node>
+
+</launch>
