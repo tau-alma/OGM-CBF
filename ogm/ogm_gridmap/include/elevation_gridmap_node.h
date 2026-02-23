@@ -48,6 +48,7 @@ class ElevationGridmapNode  : public rclcpp::Node
     bool do_reset;
     bool do_pub_occgrid;
     bool do_pub_occimg;
+    bool flip_occimg_values;
     bool do_pub_elevgrid_real;
     bool do_pub_elevgrid_vis;
 
@@ -142,7 +143,7 @@ class ElevationGridmapNode  : public rclcpp::Node
 
     void publish_occimg(rclcpp::Time& now)
     {
-      std::vector<uint8_t> data = gridmap->report_2d_uint8();
+      std::vector<uint8_t> data = gridmap->report_2d_uint8(flip_occimg_values);
       
       cv::Mat map(
         gridmap->get_height(),
@@ -332,6 +333,9 @@ class ElevationGridmapNode  : public rclcpp::Node
 
       do_pub_occimg = this->declare_parameter("do_pub_occimg", false);
       RCLCPP_INFO(this->get_logger(), "do_pub_occimg: %x", do_pub_occimg);
+
+      flip_occimg_values = this->declare_parameter("flip_occimg_values", false);
+      RCLCPP_INFO(this->get_logger(), "flip_occimg_values: %x", flip_occimg_values);
 
       do_pub_elevgrid_real = this->declare_parameter("do_pub_elevgrid_real", false);
       RCLCPP_INFO(this->get_logger(), "do_pub_elevgrid_real: %x", do_pub_elevgrid_real);

@@ -297,7 +297,7 @@ class ElevationGridmap
       return ret;
     }
 
-    std::vector<uint8_t> report_2d_uint8()
+    std::vector<uint8_t> report_2d_uint8(bool flip_values)
     {
       std::vector<uint8_t> ret;
 
@@ -306,6 +306,7 @@ class ElevationGridmap
         for (uint32_t i = 0; i < width; ++i)
         {
           uint8_t val = std::floor(gridmap(i,j).p_obs*255);
+          if (flip_values) val = 255 - val;
           ret.push_back(val);
         }
       }
