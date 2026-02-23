@@ -289,6 +289,9 @@ class ElevationGridmapNode  : public rclcpp::Node
       uint32_t width = std::ceil(_width / cellsize) ;
       RCLCPP_INFO(this->get_logger(), "width: %f -> %d", _width, width);
 
+      int pt_step = this->declare_parameter("pt_step", 1);
+      RCLCPP_INFO(this->get_logger(), "pt_step: %d", pt_step);
+
       float traversable_slope = this->declare_parameter("traversable_slope", 0.78);
       RCLCPP_INFO(this->get_logger(), "traversable_slope: %f", traversable_slope);
 
@@ -339,6 +342,7 @@ class ElevationGridmapNode  : public rclcpp::Node
       gridmap = std::make_shared<ElevationGridmap>(ElevationGridmap(
             cellsize,
             height, width,
+            pt_step,
             traversable_slope,
             traversability_r,
             traversable_z,

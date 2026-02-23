@@ -109,6 +109,8 @@ class ElevationGridmap
     float cellsize;
     float origin_x;
     float origin_y;
+ 
+    int pt_step;
 
     float traversable_slope;
     float traversability_r;
@@ -192,8 +194,11 @@ class ElevationGridmap
     {
       std::list<std::pair<int, int>> p_update_candidates;
 
+      int pt_i = -1; 
       for (pcl::PointXYZ pt : xyz.points)
       {
+        ++pt_i;
+        if (pt_i % pt_step != 0) continue;
         float z = pt.z;
         int i, j;
         std::tie(i, j) = coord2sub(pt.x, pt.y);
@@ -335,6 +340,7 @@ class ElevationGridmap
     ElevationGridmap(
         float _cellsize,
         uint32_t _height, uint32_t _width,
+        int _pt_step,
         float _traversable_slope,
         float _traversability_r,
         float _traversable_z,
@@ -357,6 +363,8 @@ class ElevationGridmap
 
       origin_x = 0.;
       origin_y = 0.;
+   
+      pt_step = _pt_step;
 
       clearance_x = 0.;
       clearance_y = 0.;
