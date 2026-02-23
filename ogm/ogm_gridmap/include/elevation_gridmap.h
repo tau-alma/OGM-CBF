@@ -53,7 +53,7 @@ class KalmanCell : public Cell
       {
         float w = sensor_var + z_var;
         z = (sensor_var * z + z_var * _z) / w;
-        z_var = sensor_var * z_var / w ;
+        //z_var = sensor_var * z_var / w ;
       }
     }
 };
