@@ -71,7 +71,7 @@ class KalmanCell : public Cell
         float pred_cov = z_var + system_var;
         float gain = z_var * h / (sensor_var + pred_cov * h);
         z = z + gain * (_z - z * h);
-        z_var = (1 - gain * h) * z_var  ;
+        if (update_var) z_var = (1 - gain * h) * z_var  ;
       }
     }
 };
