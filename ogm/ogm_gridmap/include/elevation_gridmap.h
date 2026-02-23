@@ -35,11 +35,26 @@ class KalmanCell : public Cell
   public : 
     float z_var;
     float sensor_var;
+    float system_var;
+    float h;
 
     KalmanCell() : Cell()
     {
-      z_var = .05;
-      sensor_var = .05;
+      z_var = -1.0;
+      sensor_var = -1.0;
+      system_var = -1.0;
+      h = -1.0;
+    }
+
+    void check_kalman_init(float _z_var, float _sensor_var, float _system_var)
+    {
+      if (h < 0)
+      {
+        z_var = _z_var;
+        sensor_var = _sensor_var;
+        system_var = _system_var;
+        h = 1.0;
+      }
     }
 
     void update(float _z)
@@ -51,9 +66,10 @@ class KalmanCell : public Cell
       }
       else
       {
-        float w = sensor_var + z_var;
-        z = (sensor_var * z + z_var * _z) / w;
-        //z_var = sensor_var * z_var / w ;
+        float pred_cov = z_var + system_var;
+        float gain = z_var * h / (sensor_var + pred_cov * h);
+        z = z + gain * (_z - z * h);
+        z_var = (1 - gain * h) * z_var  ;
       }
     }
 };
@@ -66,11 +82,12 @@ class KalmanCellOccupancy : public KalmanCell
     static constexpr float UNSET_P = -1.0;
     
     float p_obs;
-    
+
     KalmanCellOccupancy() : KalmanCell()
     {
       p_obs = UNKNOWN_P;
     }
+
 
     void update_occupancy(float _p_obs)
     {
@@ -103,6 +120,9 @@ class ElevationGridmap
     float clearance_x, clearance_y;
     float clearance_thr;
     
+    float cell_z_var;
+    float cell_sensor_var;
+    float cell_system_var;
 
 
     std::pair<int, int> coord2sub(float _x, float _y)
@@ -179,6 +199,7 @@ class ElevationGridmap
 	          && !is_in_clearance(pt)
 	          && (z < crop_z_max))
         {
+          gridmap(i, j).check_kalman_init(cell_z_var, cell_sensor_var, cell_system_var);
           gridmap(i ,j).update(z);
           for (std::pair<int,int> c : nbh(i,j,traversability_nbh,traversability_nbh))
           {
@@ -314,7 +335,10 @@ class ElevationGridmap
         float _traversable_slope,
         float _traversability_r,
         float _traversable_z,
-        float _crop_z_max
+        float _crop_z_max,
+        float _cell_z_var,
+        float _cell_sensor_var,
+        float _cell_system_var
         )
     {
       cellsize = _cellsize;
@@ -334,9 +358,14 @@ class ElevationGridmap
       clearance_y = 0.;
       clearance_thr = 0.;
       
+      cell_z_var = _cell_z_var;
+      cell_sensor_var = _cell_sensor_var;
+      cell_system_var = _cell_system_var;
+
       reset();
     }
 
 };
 
 #endif
+

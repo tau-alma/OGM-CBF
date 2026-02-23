@@ -301,6 +301,15 @@ class ElevationGridmapNode  : public rclcpp::Node
       float crop_z_max = this->declare_parameter("crop_z_max", 1e6);
       RCLCPP_INFO(this->get_logger(), "crop_z_max: %f", crop_z_max);
 
+      float cell_z_var = this->declare_parameter("cell_z_var", 1.0);
+      RCLCPP_INFO(this->get_logger(), "cell_z_var: %f", cell_z_var);
+
+      float cell_sensor_var = this->declare_parameter("cell_sensor_var", 0.1);
+      RCLCPP_INFO(this->get_logger(), "cell_sensor_var: %f", cell_sensor_var);
+
+      float cell_system_var = this->declare_parameter("cell_system_var", 0.01);
+      RCLCPP_INFO(this->get_logger(), "cell_system_var: %f", cell_system_var);
+
       do_update = true;
 
       do_reset = this->declare_parameter("do_reset", false);
@@ -330,7 +339,10 @@ class ElevationGridmapNode  : public rclcpp::Node
             traversable_slope,
             traversability_r,
             traversable_z,
-            crop_z_max));
+            crop_z_max,
+            cell_z_var,
+            cell_sensor_var,
+            cell_system_var));
 
 
       clearance_thr = this->declare_parameter("clearance_thr", 0.5);
