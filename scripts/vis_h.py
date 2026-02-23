@@ -12,7 +12,7 @@ from matplotlib import rc
 plt.rcParams['ps.useafm'] = True
 rc('font',**{
     'family':'serif',
-    'size' : 16,
+    'size' : 20,
     })
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['text.usetex'] = True
