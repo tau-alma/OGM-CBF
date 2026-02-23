@@ -36,6 +36,7 @@ class KalmanCell : public Cell
     float z_var;
     float sensor_var;
     float system_var;
+    bool update_var;
     float h;
 
     KalmanCell() : Cell()
@@ -46,13 +47,14 @@ class KalmanCell : public Cell
       h = -1.0;
     }
 
-    void check_kalman_init(float _z_var, float _sensor_var, float _system_var)
+    void check_kalman_init(float _z_var, float _sensor_var, float _system_var, bool _update_var)
     {
       if (h < 0)
       {
         z_var = _z_var;
         sensor_var = _sensor_var;
         system_var = _system_var;
+        update_var = _update_var;
         h = 1.0;
       }
     }
@@ -123,6 +125,7 @@ class ElevationGridmap
     float cell_z_var;
     float cell_sensor_var;
     float cell_system_var;
+    bool cell_update_var;
 
 
     std::pair<int, int> coord2sub(float _x, float _y)
@@ -199,7 +202,7 @@ class ElevationGridmap
 	          && !is_in_clearance(pt)
 	          && (z < crop_z_max))
         {
-          gridmap(i, j).check_kalman_init(cell_z_var, cell_sensor_var, cell_system_var);
+          gridmap(i, j).check_kalman_init(cell_z_var, cell_sensor_var, cell_system_var, cell_update_var);
           gridmap(i ,j).update(z);
           for (std::pair<int,int> c : nbh(i,j,traversability_nbh,traversability_nbh))
           {
@@ -338,7 +341,8 @@ class ElevationGridmap
         float _crop_z_max,
         float _cell_z_var,
         float _cell_sensor_var,
-        float _cell_system_var
+        float _cell_system_var,
+        bool _cell_update_var
         )
     {
       cellsize = _cellsize;
@@ -361,6 +365,7 @@ class ElevationGridmap
       cell_z_var = _cell_z_var;
       cell_sensor_var = _cell_sensor_var;
       cell_system_var = _cell_system_var;
+      cell_update_var = _cell_update_var;
 
       reset();
     }
