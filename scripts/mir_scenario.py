@@ -4,10 +4,23 @@ import os
 from pathlib import Path
 
 from rosbags.highlevel import AnyReader
-from rosbags.typesys import Stores, get_typestore
+from rosbags.typesys import Stores, get_typestore, get_types_from_msg
 
-BAG_ROOT="/data/data/mir/20260208_mir_festia_clean"
+CBF_DEBUG_MSG = """
+std_msgs/Header header
+float64 b_ref
+bool feasible
+string[] name
+float64[] h
+float64[] o_o
+float64[] eta
+float64[] distance
+float64[] radius
+"""
 
+
+TYPESTORE = get_typestore(Stores.ROS2_HUMBLE)
+TYPESTORE.register(get_types_from_msg(CBF_DEBUG_MSG, 'cbf_msgs/msg/CbfDebug'))
 
 def process_entry(msg, connection, timestamp):
     asf = timestamp / 1e9
@@ -15,7 +28,31 @@ def process_entry(msg, connection, timestamp):
     entry = np.array([asf, msg.data])
     return entry
 
-class MirScenario:
+class Scenario:
+
+    def get_path(self):
+        assert False, "not implemented"
+
+    def get_name(self):
+        assert False, "not implemented"
+
+    def walk_topics(self, topics):
+
+        bagpath = Path(self.bag_path)
+
+        with AnyReader([bagpath], default_typestore=TYPESTORE) as reader:
+            connections = [x for x in reader.connections if x.topic in topics]
+
+            for connection, timestamp, rawdata in reader.messages(connections=connections):
+                msg = reader.deserialize(rawdata, connection.msgtype)
+                yield (connection, timestamp/1e9, msg)
+
+    def __init__(self):
+        pass
+
+class MirScenario(Scenario):
+
+    BAG_ROOT="/data/data/mir/20260208_mir_festia_clean"
 
     ENV_CLUTTER = 'clutter'
     ENV_CONCAVE = 'concave'
@@ -86,7 +123,7 @@ class MirScenario:
 
     def get_path(self):
         relative = self.PTHS[(self.environment, self.sensor)][self.run]
-        return os.path.join(BAG_ROOT, relative)
+        return os.path.join(self.BAG_ROOT, relative)
 
     def get_name(self):
         name = "%s_%s_%02d" % (
@@ -94,18 +131,6 @@ class MirScenario:
                 self.sensor,
                 self.run)
         return name
-
-    def walk_topics(self, topics):
-
-        bagpath = Path(self.bag_path)
-        typestore = get_typestore(Stores.ROS2_HUMBLE)
-
-        with AnyReader([bagpath], default_typestore=typestore) as reader:
-            connections = [x for x in reader.connections if x.topic in topics]
-
-            for connection, timestamp, rawdata in reader.messages(connections=connections):
-                msg = reader.deserialize(rawdata, connection.msgtype)
-                yield (connection, timestamp/1e9, msg)
     
     def __init__(self, environment, sensor, run):
 
@@ -116,4 +141,43 @@ class MirScenario:
         self.name = self.get_name()
         self.bag_path = self.get_path()
 
+
+class EeveeScenario(Scenario):
+    
+    BAG_ROOT="/data/data/eevee/cbf"
+
+    ENV_THURSDAY = 'thursday'
+
+    OFFSETS = {
+            "thursday_00" : 1772118039.286425,
+            "thursday_01" : 1772118039.286425+292.,
+            "thursday_02" : 1772118039.286425+705.,
+            }
+
+    PTHS = {
+        (ENV_THURSDAY) :
+        [
+            "thursday_cbf/front_la_15_R2_a015_gausblur_wref_cont_2_obst_2_10_02_linvel_gaus_8_6_kw_052_1_kb_12_3_map7pyr3__2_recording",
+            "thursday_cbf/front_la_15_R2_a015_gausblur_wref_cont_2_obst_2_10_02_linvel_gaus_8_6_kw_052_1_kb_12_3_map7pyr3__2_recording_2",
+            "thursday_cbf/front_la_15_R2_a015_gausblur_wref_cont_2_obst_2_10_02_linvel_gaus_8_6_kw_052_1_kb_12_3_map7pyr3__2_recording_3",
+            ]
+        }
+
+    def get_path(self):
+        relative = self.PTHS[(self.environment)][self.run]
+        return os.path.join(self.BAG_ROOT, relative)
+
+    def get_name(self):
+        name = "%s_%02d" % (
+                self.environment,
+                self.run)
+        return name
+
+    def __init__(self, environment, run):
+
+        self.environment = environment
+        self.run = run
+
+        self.name = self.get_name()
+        self.bag_path = self.get_path()
 
