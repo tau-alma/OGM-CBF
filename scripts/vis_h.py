@@ -176,10 +176,11 @@ def vis_scenario_set(scenarios, name, show_x_lbl=True):
 vis_scenario_set(
         SCENARIOS_CLUTTER_SHORT + SCENARIOS_CLUTTER_LONG,
         "mir_clutter_cbf_h",
-        show_x_lbl=False)    
+        show_x_lbl=True)    
 vis_scenario_set(
         SCENARIOS_CONCAVE_SHORT + SCENARIOS_CONCAVE_LONG,
-        "mir_concave_cbf_h")    
+        "mir_concave_cbf_h",
+        show_x_lbl=True)    
 #vis_scenario_set(
 #        SCENARIOS_CLUTTER_SHORT + SCENARIOS_CLUTTER_LONG 
 #        + SCENARIOS_CONCAVE_SHORT + SCENARIOS_CONCAVE_LONG,
