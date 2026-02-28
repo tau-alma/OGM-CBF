@@ -252,6 +252,7 @@ def vis_traj_set(traj_set):
     plt.savefig("/tmp/kinset.pdf",
                bbox_inches='tight', 
                transparent=True,
+               dpi=60,
                pad_inches=0)
 
 IMG = "/data/repos/ogm-cbf/ogm-cbf-pyramid/ros2_ws/src/ogm_cbf_kinematic_sim/ogm_cbf_kinematic_sim/map/pyramid/Frame_22_2.png"
