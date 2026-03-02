@@ -61,6 +61,7 @@ def vis_legend(sfig, **kwargs):
 
     ax = sfig.subplots(1,1)
 
+
     plts = []
     
     plts.append(ax.plot([0,1],[0, 0],
@@ -81,10 +82,25 @@ def vis_legend(sfig, **kwargs):
         for l in p:
             l.set_visible(False)
    
+    ax.quiver(
+        [0.8], [0.55], [0], [-1],
+        angles="xy",
+        color='black',
+        width=0.02,
+        scale=1.6,
+        )
+    ax.text(0.7, 0.1,
+            "Target Heading",
+            rotation = 90)
+    ax.set_xlim((0, 1))
+    ax.set_ylim((0, 1))
+
+
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['bottom'].set_visible(False)
     ax.spines['left'].set_visible(False)
+
     ax.set_xticks([])
     ax.set_yticks([])
 
@@ -99,7 +115,6 @@ def vis_colorbar(sfig, pth_map, **kwargs):
         return
 
     ax = sfig.subplots(1,1)
-
 
     img = cv2.imread(pth_map, cv2.IMREAD_GRAYSCALE)
     h, w = img.shape
@@ -198,6 +213,7 @@ def vis_traj(sfig, pth_traj, pth_map, **kwargs):
         ax.quiver(
             sdf_pt[idx,0], sdf_pt[idx,1],
             sdf_grad_levels[idx,l*2], -1*sdf_grad_levels[idx,l*2+1],
+            angles="xy",
             scale = 10,
             color=CLRS[l%len(CLRS)],
             label=r"$\nabla\phi'$ Level $%d$" % (l+1),
