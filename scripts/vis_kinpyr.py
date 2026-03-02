@@ -12,7 +12,7 @@ from matplotlib import rc
 plt.rcParams['ps.useafm'] = True
 rc('font',**{
     'family':'serif',
-    'size' : 9,
+    'size' : 11,
     })
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['text.usetex'] = True
@@ -66,13 +66,18 @@ def vis_legend(sfig, **kwargs):
     
     plts.append(ax.plot([0,1],[0, 0],
             color="gray",
-            label=r"Trajectory with Headings",
+            label=r"Trajectory",
             ))
+    plts.append(ax.plot([0,1],[0, 0],
+            color="white",
+            label=r"w. Headings",
+            ))
+
 
     for l in range(pyr_level):
         plts.append(ax.plot([0,1],[0, 0],
                 color=CLRS[l%len(CLRS)],
-                label=r"$\nabla\phi'$ Level $%d$" % (l+1),
+                label=r"$\nabla\phi'_{%d}$" % (l+1),
                 ))
 
     leg = ax.legend(ncol=1)    
@@ -83,13 +88,13 @@ def vis_legend(sfig, **kwargs):
             l.set_visible(False)
    
     ax.quiver(
-        [0.8], [0.55], [0], [-1],
+        [0.9], [0.65], [0], [-1],
         angles="xy",
         color='black',
         width=0.02,
         scale=1.6,
         )
-    ax.text(0.7, 0.1,
+    ax.text(0.8, 0.1,
             "Target Heading",
             rotation = 90)
     ax.set_xlim((0, 1))
@@ -129,7 +134,7 @@ def vis_colorbar(sfig, pth_map, **kwargs):
             cax=c_map_ax,
             #ticks=[0.5],
             orientation = 'horizontal',
-            label = r'$\phi$(.) [cell]',
+            label = r"$\phi'$(.) [cell]",
             )
 
     print (cbar.__dict__)
@@ -216,14 +221,15 @@ def vis_traj(sfig, pth_traj, pth_map, **kwargs):
             angles="xy",
             scale = 10,
             color=CLRS[l%len(CLRS)],
-            label=r"$\nabla\phi'$ Level $%d$" % (l+1),
+            label=r"$\nabla\phi'_{%d}$" % (l+1),
             **kwargs)
 
 
     if pyr_sigma > 0:    
-        ax.set_title(r"Pyramid Level $%d$, $\sigma=%.1f$" % (pyr_level, pyr_sigma))
+        #ax.set_title(r"Pyramid Level $%d$, $\sigma=%.1f$" % (pyr_level, pyr_sigma))
+        ax.set_title(r"$\phi'_{%d},\ \sigma=%.1f$" % (pyr_level, pyr_sigma))
     else:
-        ax.set_title(r"Pyramid Level %d" % (pyr_level))
+        ax.set_title(r"$\phi'_{%d}$" % (pyr_level))
 
     #leg = ax.legend(ncol=2, loc='upper center',  bbox_to_anchor=(0.4, 0.9))    
     #leg.get_frame().set_alpha(0)

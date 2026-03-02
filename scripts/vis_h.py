@@ -119,22 +119,25 @@ def vis_scenario_set(scenarios, name, show_x_lbl=True):
             if 'level_0' in t:
                 plot_kwargs['linestyle']='-'
                 plot_kwargs['c']='red'
-                lbl = ""
                 #lbl += "Clutter: "
-                lbl += "Level 0"
+                #lbl = r"$h_{1}(\boldsymbol{x})$"
+                lbl = r"$k=1$"
             elif 'level_1' in t:
                 plot_kwargs['linestyle']='--'
                 plot_kwargs['c']='green'
                 lbl = ""
                 #lbl += "Clutter: "
-                lbl += "Level 1"
+                #lbl = r"$h_{2}(\boldsymbol{x})$"
+                lbl = r"$k=2$"
             elif 'level_2' in t:
                 plot_kwargs['linestyle']=':'
                 plot_kwargs['c']='blue'
                 lbl = ""
                 #lbl += "Clutter: "
-                lbl += "Level 2"
+                #lbl = r"$h_{3}(\boldsymbol{x})$"
+                lbl = r"$k=3$"
             else:
+                print ("cannot process topic '%s'" % t)
                 continue
             if sc.run == DOMINANT_RUN and not 'lr20' in sc.name:
                 plot_kwargs['label']=lbl
@@ -163,7 +166,7 @@ def vis_scenario_set(scenarios, name, show_x_lbl=True):
     else:
         ax.set_xticklabels([])
 
-    ax.set_ylabel(r"$h(\boldsymbol{x})$ [--]")    
+    ax.set_ylabel(r"$h_{k}(\boldsymbol{x})$ [--]")    
     leg = ax.legend(ncols=1)    
     leg.get_frame().set_alpha(0)
     ax.spines['top'].set_visible(False)

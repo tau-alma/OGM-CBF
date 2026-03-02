@@ -12,7 +12,7 @@ from matplotlib import rc
 plt.rcParams['ps.useafm'] = True
 rc('font',**{
     'family':'serif',
-    'size' : 9,
+    'size' : 15,
     })
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['text.usetex'] = True
@@ -76,14 +76,14 @@ def vis_sdf(pth_map, name):
     cmap = plt.get_cmap('jet_r')      
     norm = mpl.colors.Normalize(vmin=0, vmax=max_val)
 
-    c_map_ax = fig.add_axes([.91, 0.2, 0.01, 0.6])
+    c_map_ax = fig.add_axes([.91, 0.2, 0.03, 0.6])
 
     cbar = plt.colorbar(
             mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
             cax=c_map_ax,
             ticks=[0, max_val/2, max_val],
             orientation = 'vertical',
-            label = r'$\phi$(.) [px]',
+            label = r"$\phi'$(.) [px]",
             )
 
     cbar.outline.set_visible(False)
@@ -103,5 +103,5 @@ def vis_sdf(pth_map, name):
 
 
 IMG = "/home/mp/repos/papers/tau-papers/ogm-cbf/fig/carla_method_top_occ.jpg"
-vis_sdf(IMG, "/tmp/carla_method_top_sdf.jpg")
+vis_sdf(IMG, "/tmp/carla_method_top_sdf.pdf")
 

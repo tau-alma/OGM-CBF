@@ -80,8 +80,9 @@ def vis_colorbar_trav(name):
             label = r'Occupancy',
             )
 
-    cbar.set_ticks([0.5,1.5,2.5])
-    cbar.set_ticklabels(["Free", "Inflated", "Occupied"])
+    #cbar.set_ticks([0.5,1.5,2.5],labels=["Free", "Inflated", "Occupied"],rotation=20)
+    cbar.set_ticks([0.5,1.5,2.5],labels=["Free", "Inflated", "Occupied"])
+    #cbar.set_ticklabels(["Free", "Inflated", "Occupied"])
 
     cbar.outline.set_visible(False)
 
