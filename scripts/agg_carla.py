@@ -34,7 +34,7 @@ TOPIC_ODOM = '/carla/ego_vehicle/odometry'
 TOPIC_VCBF_COLLISION = '/vcbf/collision'
 TOPIC_VCBF_ODOM = '/vcbf/odom'
 
-SCENARIOS = ['trap', 'simple']
+SCENARIOS = ['simple', 'trap']
 MODELS = ['ogm','nomem','vcbf']
 
 TOPICS = {
@@ -134,8 +134,7 @@ def tabulize_run_set(run_sets):
             tab[(scenario,model)] = {K_COLLISION : sucs, K_MINDST : dsts}        
 
     fancy_scenarios = {
-            'trap' : 'Difficult',
-            'dummy' : 'DUMMY',
+            'trap' : 'Trap',
             'simple' : 'Open',
             }
 

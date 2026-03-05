@@ -70,8 +70,15 @@ def vis_legend(sfig, **kwargs):
             ))
     plts.append(ax.plot([0,1],[0, 0],
             color="white",
-            label=r"w. Headings",
+            label=r"with Headings",
             ))
+    ax.quiver(
+        [0.38], [0.9], [-1], [0],
+        angles="xy",
+        color='gray',
+        width=0.02,
+        scale=5,
+        )
 
 
     for l in range(pyr_level):
@@ -79,6 +86,13 @@ def vis_legend(sfig, **kwargs):
                 color=CLRS[l%len(CLRS)],
                 label=r"$\nabla\phi'_{%d}$" % (l+1),
                 ))
+        ax.quiver(
+            [0.38], [0.675-l*0.12], [-1], [0],
+            angles="xy",
+            color=CLRS[l%len(CLRS)],
+            width=0.02,
+            scale=5,
+            )
 
     leg = ax.legend(ncol=1)    
     leg.get_frame().set_alpha(0)
@@ -92,10 +106,10 @@ def vis_legend(sfig, **kwargs):
         angles="xy",
         color='black',
         width=0.02,
-        scale=1.6,
+        scale=1.55,
         )
-    ax.text(0.8, 0.1,
-            "Target Heading",
+    ax.text(0.8, 0.0,
+            r"Target Heading $\psi_\text{ref}$",
             rotation = 90)
     ax.set_xlim((0, 1))
     ax.set_ylim((0, 1))
@@ -227,7 +241,11 @@ def vis_traj(sfig, pth_traj, pth_map, **kwargs):
 
     if pyr_sigma > 0:    
         #ax.set_title(r"Pyramid Level $%d$, $\sigma=%.1f$" % (pyr_level, pyr_sigma))
+        sigma_true = np.sqrt(pyr_sigma*pyr_sigma + 1) 
         ax.set_title(r"$\phi'_{%d},\ \sigma=%.1f$" % (pyr_level, pyr_sigma))
+    elif pyr_level > 1:    
+        #ax.set_title(r"Pyramid Level $%d$, $\sigma=%.1f$" % (pyr_level, pyr_sigma))
+        ax.set_title(r"$\phi'_{%d},\ \sigma=%.1f$" % (pyr_level, 1.0))
     else:
         ax.set_title(r"$\phi'_{%d}$" % (pyr_level))
 

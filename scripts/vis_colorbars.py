@@ -40,7 +40,7 @@ def vis_colorbar_sdf(name, max_val):
             cax=c_map_ax,
             ticks=[0, max_val/2, max_val],
             orientation = 'horizontal',
-            label = r'$\phi$(.) [m]',
+            label = r'$\phi_{1}$(.) [m]',
             )
 
     cbar.outline.set_visible(False)

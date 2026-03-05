@@ -22,7 +22,8 @@ import matplotlib as mpl
 
 
 
-SDF_SCALE = 7 
+SDF_SCALE = 11 #7 
+SDF_SCALE_NEG = 220
 QUIVER_STEP = 50
 THR_OCC = 0.66
 
@@ -35,12 +36,22 @@ def vis_sdf(pth_map, name):
     img[img <= THR_OCC * 255] = 0
     
     sdf = cv2.distanceTransform(255 - img, cv2.DIST_L2, 3, dstType=cv2.CV_32F)
+    sdf_inv = cv2.distanceTransform(img, cv2.DIST_L2, 3, dstType=cv2.CV_32F)
+    sdf = sdf - sdf_inv
     nabla = np.gradient(sdf)
 
+    print (np.min(sdf), np.max(sdf))
 
     max_val = np.ceil(max(h,w) / SDF_SCALE)
-    x = (sdf / max_val * 255).astype(np.uint8)
+    min_val = -1*np.ceil(max(h,w) / SDF_SCALE_NEG)
+    x = np.copy(sdf)
+    x[x > max_val] = max_val
+    x[x < min_val] = min_val
+    print (np.min(x), np.max(x))
+
+    x = ( (x-min_val) / (max_val-min_val) * 255).astype(np.uint8)
     x = cv2.applyColorMap(x, cv2.COLORMAP_JET)
+    
 
     fig = plt.figure(figsize=(10,2.3))
     ax = fig.subplots(1,1)
@@ -52,9 +63,9 @@ def vis_sdf(pth_map, name):
     for i in range(QUIVER_STEP//2,h,QUIVER_STEP):
         for j in range(QUIVER_STEP//2,w,QUIVER_STEP):
             vecs.append([i,j,nabla[0][i,j],nabla[1][i,j]])
-            print (sdf[i,j],np.sqrt(np.power(nabla[0][i,j],2)+np.power(nabla[1][i,j],2)))
+            #print (sdf[i,j],np.sqrt(np.power(nabla[0][i,j],2)+np.power(nabla[1][i,j],2)))
     vecs = np.array(vecs)
-    print (vecs.shape)
+    #print (vecs.shape)
 
     kwargs = {
             "width" : 0.003,
@@ -74,14 +85,15 @@ def vis_sdf(pth_map, name):
     print (h,w)
 
     cmap = plt.get_cmap('jet_r')      
-    norm = mpl.colors.Normalize(vmin=0, vmax=max_val)
+    norm = mpl.colors.Normalize(vmin=min_val, vmax=max_val)
 
     c_map_ax = fig.add_axes([.91, 0.2, 0.03, 0.6])
 
     cbar = plt.colorbar(
             mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
             cax=c_map_ax,
-            ticks=[0, max_val/2, max_val],
+            #ticks=[0, max_val/2, max_val],
+            ticks=range(0,int(max_val),100),
             orientation = 'vertical',
             label = r"$\phi'$(.) [px]",
             )
