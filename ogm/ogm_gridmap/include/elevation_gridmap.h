@@ -282,6 +282,21 @@ class ElevationGridmap
       return xyz;
     }
 
+    std::vector<int8_t> report_3d_int8(float z_resolution, float z_offset)
+    {
+      std::vector<int8_t> ret;
+
+      for (uint32_t j = 0; j < height; ++j)
+      {
+        for (uint32_t i = 0; i < width; ++i)
+        {
+          int8_t val = (std::floor(gridmap(i,j).z) - z_offset) / z_resolution;
+          ret.push_back(val);
+        }
+      }
+      return ret;
+    }
+
     std::vector<int8_t> report_2d_int8()
     {
       std::vector<int8_t> ret;

@@ -29,6 +29,7 @@ class ElevationGridmapNode  : public rclcpp::Node
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_elevgrid_vis;
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr pub_occgrid;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_occimg;
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_elevimg;
     rclcpp::TimerBase::SharedPtr timer_map;
 
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr trigger_on;
@@ -48,7 +49,9 @@ class ElevationGridmapNode  : public rclcpp::Node
     bool do_reset;
     bool do_pub_occgrid;
     bool do_pub_occimg;
+    bool do_pub_elevimg;
     bool flip_occimg_values;
+    float elevimg_z_res; 
     bool do_pub_elevgrid_real;
     bool do_pub_elevgrid_vis;
 
@@ -165,6 +168,30 @@ class ElevationGridmapNode  : public rclcpp::Node
       pub_occimg->publish(msg_img);
     }
 
+    void publish_elevimg(rclcpp::Time& now)
+    {
+      std::vector<int8_t> data = gridmap->report_3d_int8(elevimg_z_res, occgrid_vis_z);
+      
+      cv::Mat map(
+        gridmap->get_height(),
+        gridmap->get_width(),
+        CV_8S,
+        data.data()
+        );
+      cv::Mat img;
+      cv::flip(map, img, 0);
+
+      cv_bridge::CvImage cv_bridge_image;
+      cv_bridge_image.encoding = sensor_msgs::image_encodings::MONO8;
+      cv_bridge_image.image = img;
+
+      sensor_msgs::msg::Image msg_img = *(cv_bridge_image.toImageMsg());
+	    msg_img.header.stamp = now;
+	    msg_img.header.frame_id = this->map_frame;
+
+      pub_elevimg->publish(msg_img);
+    }
+
     void tick_map()
     {
       RCLCPP_DEBUG(this->get_logger(), "--------------------");
@@ -196,6 +223,9 @@ class ElevationGridmapNode  : public rclcpp::Node
 
       // occimg
       if (do_pub_occimg) publish_occimg(ts);
+      
+      // elevimg
+      if (do_pub_elevimg) publish_elevimg(ts);
       
       auto wall_img = std::chrono::high_resolution_clock::now();
       RCLCPP_DEBUG(this->get_logger(), "wall-tick img: %lf ms",
@@ -334,8 +364,14 @@ class ElevationGridmapNode  : public rclcpp::Node
       do_pub_occimg = this->declare_parameter("do_pub_occimg", false);
       RCLCPP_INFO(this->get_logger(), "do_pub_occimg: %x", do_pub_occimg);
 
+      do_pub_elevimg = this->declare_parameter("do_pub_elevimg", false);
+      RCLCPP_INFO(this->get_logger(), "do_pub_elevimg: %x", do_pub_elevimg);
+
       flip_occimg_values = this->declare_parameter("flip_occimg_values", false);
       RCLCPP_INFO(this->get_logger(), "flip_occimg_values: %x", flip_occimg_values);
+
+      elevimg_z_res = this->declare_parameter("elevimg_z_res", 0.02);
+      RCLCPP_INFO(this->get_logger(), "elevimg_z_res: %f", elevimg_z_res);
 
       do_pub_elevgrid_real = this->declare_parameter("do_pub_elevgrid_real", false);
       RCLCPP_INFO(this->get_logger(), "do_pub_elevgrid_real: %x", do_pub_elevgrid_real);
@@ -374,6 +410,10 @@ class ElevationGridmapNode  : public rclcpp::Node
 		      );
       pub_occimg = this->create_publisher<sensor_msgs::msg::Image>(
 		      "occupancy_img",
+		      rclcpp::QoS(rclcpp::SensorDataQoS())
+		      );
+      pub_elevimg = this->create_publisher<sensor_msgs::msg::Image>(
+		      "elevation_img",
 		      rclcpp::QoS(rclcpp::SensorDataQoS())
 		      );
 
