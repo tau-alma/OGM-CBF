@@ -8,7 +8,8 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
-
+from launch_ros.actions import ComposableNodeContainer
+from launch_ros.descriptions import ComposableNode
 
 def generate_launch_description():
 
@@ -24,7 +25,6 @@ def generate_launch_description():
         description='tf handler namespace'
     )
 
-
     velarray_pcd_2_map_pcd = Node(
             package='ogm_gridmap',
             executable='pcd_transformer',
@@ -32,7 +32,7 @@ def generate_launch_description():
             output={'both': 'log'},
             namespace=LaunchConfiguration('ns'),
             remappings=[
-                ('pcd_in','/M1600_driver/points'),
+                ('pcd_in','/velarray/points'),
                 ('pcd_out','points/in_map'),
                 ('odom','/odom_in_map'),
                 ],
@@ -43,6 +43,7 @@ def generate_launch_description():
                 {"target_frame" : "velarray_sensor"},
                 {"sync_slack" : 0.0125},
                 {"sync_window" : 1.0},
+                {"crop_box_halfsize" : 5.},
                 ],
         )
 
@@ -62,7 +63,7 @@ def generate_launch_description():
                 {"do_pub_occgrid" : False},
                 {"do_pub_occimg" : False},
                 {"occgrid_vis_z" : -16.0},
-                {"do_pub_elevgrid_real" : False},
+                {"do_pub_elevgrid_real" : True},
                 {"do_pub_elevgrid_vis" : False},
                 {"do_pub_elevimg" : True},
                 {"elevimg_z_res" : 0.02},

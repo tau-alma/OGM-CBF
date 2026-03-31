@@ -9,6 +9,10 @@
 #include "tf2_ros/transform_listener.h"
 #include "tf2_ros/buffer.h"
 
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/filters/crop_box.h>
 #include "pcl_ros/transforms.hpp"
 
 #include "manual_sync.h"
@@ -31,6 +35,8 @@ class TransformerNode  : public rclcpp::Node
     std::string odom_frame;
     std::string link_frame;
     std::string target_frame;
+
+    float crop_box_halfsize;
 
     Eigen::Matrix4f T_link2sensor = Eigen::Matrix4f::Identity();
 
@@ -177,16 +183,30 @@ class TransformerNode  : public rclcpp::Node
             pcd_stamp.seconds(),
             odom_stamp.seconds() - pcd_stamp.seconds()
 	    );
-        
-	Eigen::Matrix4f T_odom2link = get_T_matrix(msg_odom);
- 
-	Eigen::Matrix4f T_map2sensor =  T_odom2link * T_link2sensor;
-	           
-	sensor_msgs::msg::PointCloud2 msg_out;
-	pcl_ros::transformPointCloud (T_map2sensor, *msg_pcd, msg_out);
-			     
-	msg_out.header.frame_id = odom_frame;
-	pub_pcd->publish(msg_out);
+
+      pcl::PointCloud<pcl::PointXYZ>::Ptr pcd_in(new pcl::PointCloud<pcl::PointXYZ>);
+      pcl::fromROSMsg(*msg_pcd, *pcd_in);
+
+	    Eigen::Matrix4f T_odom2link = get_T_matrix(msg_odom);
+	    Eigen::Matrix4f T_map2sensor =  T_odom2link * T_link2sensor;
+
+      pcl::CropBox<pcl::PointXYZ> crop_filter;
+      crop_filter.setInputCloud(pcd_in);
+      crop_filter.setMin(Eigen::Vector4f(-crop_box_halfsize, -crop_box_halfsize, -crop_box_halfsize, -1.));
+      crop_filter.setMax(Eigen::Vector4f( crop_box_halfsize,  crop_box_halfsize,  crop_box_halfsize, 1.));
+      
+      pcl::PointCloud<pcl::PointXYZ>::Ptr pcd_out(new pcl::PointCloud<pcl::PointXYZ>);
+      crop_filter.filter(*pcd_out);
+
+	    sensor_msgs::msg::PointCloud2 msg_crop;
+      pcl::toROSMsg(*pcd_out, msg_crop);
+
+	    sensor_msgs::msg::PointCloud2 msg_out;
+	    pcl_ros::transformPointCloud (T_map2sensor, msg_crop, msg_out);
+
+	    msg_out.header = msg_pcd->header;
+	    msg_out.header.frame_id = odom_frame;
+	    pub_pcd->publish(msg_out);
 
       }
     }
@@ -241,6 +261,9 @@ class TransformerNode  : public rclcpp::Node
 
       target_frame = this->declare_parameter("target_frame", "target_frame");
       RCLCPP_INFO(this->get_logger(), "target_frame: %s", target_frame.c_str());
+
+      crop_box_halfsize = this->declare_parameter("crop_box_halfsize", 1000.);
+      RCLCPP_INFO(this->get_logger(), "crop_box_halfsize: %f", crop_box_halfsize);
 
       float sync_slack = this->declare_parameter("sync_slack", 0.1);
       RCLCPP_INFO(this->get_logger(), "sync_slack: %f", sync_slack);
