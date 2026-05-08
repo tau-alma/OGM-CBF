@@ -24,6 +24,7 @@ setup(
             'camera_broadcaster = ogm_tools.camera_broadcaster:main',
             'tf2odom = ogm_tools.tf2odom:main',
             'odom_transform = ogm_tools.odom_transform:main',
+            'stf_repub = ogm_tools.stf_repub:main',
         ],
     },
 )

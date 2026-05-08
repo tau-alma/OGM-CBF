@@ -37,6 +37,10 @@ class TransformerNode  : public rclcpp::Node
     std::string target_frame;
 
     float crop_box_halfsize;
+    float crop_halfplane_front;
+    float crop_halfplane_rear;
+    float crop_halfplane_left;
+    float crop_halfplane_right;
 
     Eigen::Matrix4f T_link2sensor = Eigen::Matrix4f::Identity();
 
@@ -192,8 +196,12 @@ class TransformerNode  : public rclcpp::Node
 
       pcl::CropBox<pcl::PointXYZ> crop_filter;
       crop_filter.setInputCloud(pcd_in);
-      crop_filter.setMin(Eigen::Vector4f(-crop_box_halfsize, -crop_box_halfsize, -crop_box_halfsize, -1.));
-      crop_filter.setMax(Eigen::Vector4f( crop_box_halfsize,  crop_box_halfsize,  crop_box_halfsize, 1.));
+      float crop_front = std::min(crop_box_halfsize, crop_halfplane_front);
+      float crop_rear = std::max(-crop_box_halfsize, crop_halfplane_rear);
+      float crop_left = std::min(crop_box_halfsize, crop_halfplane_left);
+      float crop_right = std::max(-crop_box_halfsize, crop_halfplane_right);
+      crop_filter.setMin(Eigen::Vector4f(crop_rear,  crop_right, -crop_box_halfsize, -1.));
+      crop_filter.setMax(Eigen::Vector4f(crop_front,  crop_left,  crop_box_halfsize, 1.));
       
       pcl::PointCloud<pcl::PointXYZ>::Ptr pcd_out(new pcl::PointCloud<pcl::PointXYZ>);
       crop_filter.filter(*pcd_out);
@@ -264,6 +272,18 @@ class TransformerNode  : public rclcpp::Node
 
       crop_box_halfsize = this->declare_parameter("crop_box_halfsize", 1000.);
       RCLCPP_INFO(this->get_logger(), "crop_box_halfsize: %f", crop_box_halfsize);
+
+      crop_halfplane_front = this->declare_parameter("crop_halfplane_front", 1000.);
+      RCLCPP_INFO(this->get_logger(), "crop_halfplane_front: %f", crop_halfplane_front);
+
+      crop_halfplane_rear = this->declare_parameter("crop_halfplane_rear", -1000.);
+      RCLCPP_INFO(this->get_logger(), "crop_halfplane_rear: %f", crop_halfplane_rear);
+
+      crop_halfplane_left = this->declare_parameter("crop_halfplane_left", 1000.);
+      RCLCPP_INFO(this->get_logger(), "crop_halfplane_left: %f", crop_halfplane_left);
+
+      crop_halfplane_right = this->declare_parameter("crop_halfplane_right", -1000.);
+      RCLCPP_INFO(this->get_logger(), "crop_halfplane_right: %f", crop_halfplane_right);
 
       float sync_slack = this->declare_parameter("sync_slack", 0.1);
       RCLCPP_INFO(this->get_logger(), "sync_slack: %f", sync_slack);

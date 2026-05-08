@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <arg name="use_sim_time" default="true" />
+  <arg name="ns" default="livox_odom" />
+  <arg name="pwd" default="$(dirname)" />
+
+  <node pkg="fast_lio" exec="fastlio_mapping" name="fastlio_mapping"
+    namespace="$(var ns)"
+    output="screen">
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+    <param from="$(var pwd)/mid360pc2.yaml"/>
+    <remap from="/livox/lidar" to="/livox/pointcloud"/>
+    <remap from="/tf" to="tf_null"/>
+    <remap from="/Odometry" to="odom"/>
+    <remap from="/cloud_registered" to="points_registered"/>
+  </node>
+
+  <node pkg="odom_to_tf_ros2" exec="odom_to_tf" name="odom_2_tf"
+    namespace="$(var ns)"
+    output="log">
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+    <param name="odom_topic" value="odom"/>
+    <param name="frame_id" value="livox_odom"/>
+    <param name="child_frame_id" value="livox_odom_pose_link"/>
+  </node>
+
+  <node pkg="tf2_ros" exec="static_transform_publisher" name="sbr_map_2_livox_odom"
+    namespace="$(var ns)"
+    output="log" 
+    args="0.0 0.0 0.0
+          1.0 0.0 0.0 0.0
+          livox_odom_galign livox_odom">
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+  </node>
+
+  <node pkg="tf2_ros" exec="static_transform_publisher" name="sbr_livox_odom_2_camera_init"
+    namespace="$(var ns)"
+    output="log" 
+    args="0.0 0.0 0.0
+          0.0 0.0 0.0 1.0
+          livox_odom camera_init">
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+  </node>
+
+  <node pkg="ogm_tools" exec="stf_repub" name="sbr_livox_link"
+    namespace="$(var ns)"
+    output="screen">
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+    <param name="parent_source_frame" value="livox_frame"/>
+    <param name="child_source_frame" value="base_link"/>
+    <param name="parent_report_frame" value="livox_odom_pose_link"/>
+    <param name="child_report_frame" value="base_link"/>
+  </node>
+
+
+  <!--node pkg="rviz2" exec="rviz2" name="rviz" args="-d $(var pwd)/festia_view.rviz">
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+  </node-->
+
+</launch>

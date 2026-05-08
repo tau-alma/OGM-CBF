@@ -14,8 +14,12 @@ class TF2Odom(Node):
         super().__init__('tf2odom')
         self.declare_parameter('map_frame', rclpy.Parameter.Type.STRING)
         self.declare_parameter('target_frame', rclpy.Parameter.Type.STRING)
+        self.declare_parameter('period', rclpy.Parameter.Type.DOUBLE)
+        self.declare_parameter('use_tf_stamp', rclpy.Parameter.Type.BOOL)
         self.map_frame = self.get_parameter('map_frame').value 
         self.target_frame = self.get_parameter('target_frame').value 
+        self.period = self.get_parameter('period').value 
+        self.use_tf_stamp = self.get_parameter('use_tf_stamp').value 
  
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -23,7 +27,7 @@ class TF2Odom(Node):
         
         self.pub = self.create_publisher(Odometry, 'odom', 1)
 
-        self.timer = self.create_timer(.1, self.tick)
+        self.timer = self.create_timer(self.period, self.tick)
 
     def tick(self):
 
@@ -34,9 +38,16 @@ class TF2Odom(Node):
 
             msg = Odometry()  
             msg.header = tf_msg_to_target.header
+            if not self.use_tf_stamp:
+                msg.header.stamp = self.get_clock().now().to_msg()
             msg.child_frame_id = tf_msg_to_target.child_frame_id
-            msg.pose.pose.position = tf_msg_to_target.transform.translation 
-            msg.pose.pose.orientation = tf_msg_to_target.transform.rotation
+            msg.pose.pose.position.x = tf_msg_to_target.transform.translation.x 
+            msg.pose.pose.position.y = tf_msg_to_target.transform.translation.y 
+            msg.pose.pose.position.z = tf_msg_to_target.transform.translation.z 
+            msg.pose.pose.orientation.x = tf_msg_to_target.transform.rotation.x
+            msg.pose.pose.orientation.y = tf_msg_to_target.transform.rotation.y
+            msg.pose.pose.orientation.z = tf_msg_to_target.transform.rotation.z
+            msg.pose.pose.orientation.w = tf_msg_to_target.transform.rotation.w
 
             self.pub.publish(msg)
         else:
@@ -45,8 +56,8 @@ class TF2Odom(Node):
     def get_tf(self):
         try:
             tf_msg_to_target = self.tf_buffer.lookup_transform(
-                    self.target_frame,
                     self.map_frame,
+                    self.target_frame,
                     rclpy.time.Time()
                     )
             fsf = tf_msg_to_target.header.stamp.sec + tf_msg_to_target.header.stamp.nanosec/1e9 
