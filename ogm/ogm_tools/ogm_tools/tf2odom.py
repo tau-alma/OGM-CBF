@@ -34,7 +34,7 @@ class TF2Odom(Node):
         fsf, tf_msg_to_target = self.get_tf()   
         # close or 0-time static
         if tf_msg_to_target is not None:
-            self.get_logger().info ("transfrom at %f" % (fsf))
+            self.get_logger().debug ("transfrom at %f" % (fsf))
 
             msg = Odometry()  
             msg.header = tf_msg_to_target.header

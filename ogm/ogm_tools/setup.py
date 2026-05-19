@@ -25,6 +25,7 @@ setup(
             'tf2odom = ogm_tools.tf2odom:main',
             'odom_transform = ogm_tools.odom_transform:main',
             'stf_repub = ogm_tools.stf_repub:main',
+            'odom_cmd = ogm_tools.odom_cmd:main',
         ],
     },
 )

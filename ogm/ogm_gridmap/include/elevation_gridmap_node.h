@@ -42,11 +42,11 @@ class ElevationGridmapNode  : public rclcpp::Node
     float occgrid_vis_z;
     std::string map_frame;
 
-    float clearance_x, clearance_y;
     float clearance_thr;
     
     bool do_update;
     bool do_reset;
+    bool do_clear_dir;
     bool do_pub_occgrid;
     bool do_pub_occimg;
     bool do_pub_elevimg;
@@ -296,9 +296,28 @@ class ElevationGridmapNode  : public rclcpp::Node
 
     void callback_clearance(const nav_msgs::msg::Odometry::SharedPtr msgo)
     {
+
+      Eigen::Quaternionf q(
+          msgo->pose.pose.orientation.w,
+          msgo->pose.pose.orientation.x,
+          msgo->pose.pose.orientation.y,
+          msgo->pose.pose.orientation.z);
+      Eigen::Matrix3f R = q.toRotationMatrix();
+
+      float clearance_x = msgo->pose.pose.position.x;
+      float clearance_y = msgo->pose.pose.position.y;
+      float clearance_z = msgo->pose.pose.position.z;
+      float clearance_dx = do_clear_dir ? R(0,0) : 0.;
+      float clearance_dy = do_clear_dir ? R(1,0) : 0.;
+      float clearance_dz = do_clear_dir ? R(2,0) : 0.;
+
       gridmap->update_clearance(
-          clearance_x = msgo->pose.pose.position.x,
-          clearance_y = msgo->pose.pose.position.y,
+          clearance_x,
+          clearance_y,
+          clearance_z,
+          clearance_dx,
+          clearance_dy,
+          clearance_dz,
           clearance_thr);
 
     }
@@ -395,6 +414,9 @@ class ElevationGridmapNode  : public rclcpp::Node
 
       clearance_thr = this->declare_parameter("clearance_thr", 0.5);
       RCLCPP_INFO(this->get_logger(), "clearance_thr: %f", clearance_thr);
+      
+      do_clear_dir = this->declare_parameter("do_clear_dir", false);
+      RCLCPP_INFO(this->get_logger(), "do_clear_dir: %x", do_clear_dir);
 
       pub_occgrid = this->create_publisher<nav_msgs::msg::OccupancyGrid>(
           "occupancy_gridmap",
