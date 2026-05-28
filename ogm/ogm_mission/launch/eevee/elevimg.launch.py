@@ -29,7 +29,7 @@ def generate_launch_description():
             package='ogm_gridmap',
             executable='pcd_transformer',
             name='pcd_velarray2odom',
-            output={'both': 'log'},
+            output={'both': 'screen'},
             namespace=LaunchConfiguration('ns'),
             remappings=[
                 ('pcd_in','/velarray/points'),
@@ -43,6 +43,8 @@ def generate_launch_description():
                 {"target_frame" : "velarray_sensor"},
                 {"sync_slack" : 0.0125},
                 {"sync_window" : 1.0},
+                #{"sync_slack" : 0.125},
+                #{"sync_window" : 1.0},
                 {"crop_box_halfsize" : 5.},
                 ],
         )
@@ -70,7 +72,7 @@ def generate_launch_description():
                 {"cellsize" : .1},
                 {"height" : 80.},
                 {"width" : 100.},
-                {"clearance_thr" : -1.0},
+                {"clearance_thr" : 0.0},
                 {"traversable_slope" : 0.78},
                 ],
         )

@@ -309,7 +309,7 @@ class ElevationGridmap
       {
         for (uint32_t i = 0; i < width; ++i)
         {
-          int8_t val = (std::floor(gridmap(i,j).z) - z_offset) / z_resolution;
+          int8_t val = std::floor((gridmap(i,j).z - z_offset) / z_resolution);
           ret.push_back(val);
         }
       }
