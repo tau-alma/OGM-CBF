@@ -79,7 +79,7 @@
     <param name="map_frame" value="$(var map_frame)"/>
     <param name="do_pub_elevimg" value="True" />
     <param name="do_pub_occimg" value="False" />
-    <param name="occgrid_vis_z" value="0.0" />
+    <param name="occgrid_vis_z" value="-0.5" />
     
     <param name="do_pub_elevgrid_real" value="True" />
     <param name="do_pub_elevgrid_vis" value="False" />
@@ -87,7 +87,7 @@
     <param name="cellsize" value="0.05" />
     <param name="height" value="20." />
     <param name="width" value="20." />
-    <param name="elevimg_z_res" value="0.01" />
+    <param name="elevimg_z_res" value="0.005" />
     <param name="clearance_thr" value="1." />
     <param name="do_clear_dir" value="true" />
     <param name="traversable_slope" value="0.78" />
@@ -95,6 +95,7 @@
     <remap from="pcd" to="points_registered"/>
     <remap from="clearance_odom" to="odom_cmd"/>
     <remap from="elevation_gridmap" to="elevation_gridmap_front"/>
+    <remap from="elevation_img" to="elevation_img_front"/>
   </node>
 
   <node pkg="ogm_gridmap" exec="elevgrid" name="elevation_map"
@@ -105,7 +106,7 @@
     <param name="map_frame" value="$(var map_frame)"/>
     <param name="do_pub_elevimg" value="True" />
     <param name="do_pub_occimg" value="False" />
-    <param name="occgrid_vis_z" value="0.0" />
+    <param name="occgrid_vis_z" value="-0.5" />
     
     <param name="do_pub_elevgrid_real" value="True" />
     <param name="do_pub_elevgrid_vis" value="False" />
@@ -113,7 +114,7 @@
     <param name="cellsize" value="0.05" />
     <param name="height" value="20." />
     <param name="width" value="20." />
-    <param name="elevimg_z_res" value="0.01" />
+    <param name="elevimg_z_res" value="0.005" />
     <param name="clearance_thr" value="-1." />
     <param name="do_clear_dir" value="true" />
     <param name="traversable_slope" value="0.78" />
@@ -121,6 +122,14 @@
     <remap from="pcd" to="points_registered"/>
     <remap from="clearance_odom" to="odom_cmd"/>
     <remap from="elevation_gridmap" to="elevation_gridmap_rear"/>
+    <remap from="elevation_img" to="elevation_img_rear"/>
   </node>
+
+  <node pkg="ogm_gridmap" exec="rutmap" name="rutmap"
+    namespace="$(var ns)"
+    output="log">
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+  </node>
+    
 
 </launch>

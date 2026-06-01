@@ -6,10 +6,10 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
-        - /PointCloud21/Status1
-        - /PointCloud21/Topic1
-        - /PointCloud22
-        - /PointCloud22/Topic1
+        - /points_registered1/Status1
+        - /points_registered1/Topic1
+        - /gridmap front1
+        - /gridmap front1/Topic1
       Splitter Ratio: 0.5
     Tree Height: 854
   - Class: rviz_common/Selection
@@ -29,7 +29,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: PointCloud2
+    SyncSource: points_registered
 Visualization Manager:
   Class: ""
   Displays:
@@ -63,13 +63,13 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: Intensity
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 999999
       Min Color: 0; 0; 0
       Min Intensity: 999999
-      Name: PointCloud2
+      Name: points_registered
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 5
@@ -84,7 +84,7 @@ Visualization Manager:
         Value: /ogm/points_registered
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: false
       Autocompute Value Bounds:
@@ -103,7 +103,7 @@ Visualization Manager:
       Max Intensity: 0.20000000298023224
       Min Color: 0; 0; 0
       Min Intensity: -0.10000000149011612
-      Name: PointCloud2
+      Name: gridmap front
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 3
@@ -115,7 +115,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Best Effort
-        Value: /ogm/elevation_gridmap
+        Value: /ogm/elevation_gridmap_front
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
@@ -160,8 +160,6 @@ Visualization Manager:
           Value: true
         d435_link:
           Value: true
-        gridmap:
-          Value: true
         livox_frame:
           Value: true
         livox_link:
@@ -169,8 +167,6 @@ Visualization Manager:
         livox_odom:
           Value: true
         livox_odom_galign:
-          Value: true
-        livox_odom_link:
           Value: true
         livox_odom_pose_link:
           Value: true
@@ -190,40 +186,39 @@ Visualization Manager:
       Show Axes: true
       Show Names: true
       Tree:
-        gridmap:
-          map:
-            livox_odom_galign:
-              livox_odom:
-                camera_init:
-                  {}
-                livox_odom_pose_link:
-                  base_link:
-                    chassis_center:
-                      chassis_front:
-                        d435_bottom_rear:
-                          d435_link:
-                            d435_accel_frame:
-                              d435_accel_optical_frame:
-                                {}
-                            d435_color_frame:
-                              d435_color_optical_frame:
-                                {}
-                            d435_gyro_frame:
-                              d435_gyro_optical_frame:
-                                {}
-                              d435_imu_frame:
-                                d435_imu_optical_frame:
-                                  {}
-                      chassis_rear:
-                        {}
-                      tower_base_front:
-                        sensor_bridge_bottom_rear:
-                          livox_link:
-                            livox_frame:
+        map:
+          livox_odom_galign:
+            livox_odom:
+              camera_init:
+                {}
+              livox_odom_pose_link:
+                base_link:
+                  chassis_center:
+                    chassis_front:
+                      d435_bottom_rear:
+                        d435_link:
+                          d435_accel_frame:
+                            d435_accel_optical_frame:
                               {}
-                          sensor_bridge_top_front:
-                            visnav_link:
+                          d435_color_frame:
+                            d435_color_optical_frame:
                               {}
+                          d435_gyro_frame:
+                            d435_gyro_optical_frame:
+                              {}
+                            d435_imu_frame:
+                              d435_imu_optical_frame:
+                                {}
+                    chassis_rear:
+                      {}
+                    tower_base_front:
+                      sensor_bridge_bottom_rear:
+                        livox_link:
+                          livox_frame:
+                            {}
+                        sensor_bridge_top_front:
+                          visnav_link:
+                            {}
       Update Interval: 0
       Value: true
     - Angle Tolerance: 0.10000000149011612
@@ -311,25 +306,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 7.182386875152588
+      Distance: 23.826290130615234
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -2.1548783779144287
-        Y: 1.6683266162872314
-        Z: 1.1348013877868652
+        X: -6.962423324584961
+        Y: -5.989019393920898
+        Z: 0.20079994201660156
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.6597967147827148
+      Pitch: 0.2805430591106415
       Target Frame: base_link
       Value: Orbit (rviz)
-      Yaw: 2.5004005432128906
+      Yaw: 1.971392273902893
     Saved: ~
 Window Geometry:
   Displays:

@@ -43,6 +43,8 @@ class ElevationGridmapNode  : public rclcpp::Node
     std::string map_frame;
 
     float clearance_thr;
+    double max_clearance_age;
+    double clearance_ts; 
     
     bool do_update;
     bool do_reset;
@@ -275,7 +277,11 @@ class ElevationGridmapNode  : public rclcpp::Node
       RCLCPP_DEBUG(this->get_logger(), "wall-callback reset: %lf ms",
 		      std::chrono::duration<double, std::milli>(wall_reset - wall_start).count());
 
-      if (do_update)
+      rclcpp::Time pcd_stamp(msgp->header.stamp);
+      double pcd_ts = pcd_stamp.seconds();
+      double clearance_age = pcd_ts - clearance_ts;
+
+      if (do_update && (max_clearance_age < 0. || clearance_age < max_clearance_age))
       {
         pcl::PCLPointCloud2::Ptr pcdp (new pcl::PCLPointCloud2());
         pcl_conversions::toPCL(*msgp,*pcdp);
@@ -310,7 +316,7 @@ class ElevationGridmapNode  : public rclcpp::Node
       float clearance_dx = do_clear_dir ? R(0,0) : 0.;
       float clearance_dy = do_clear_dir ? R(1,0) : 0.;
       float clearance_dz = do_clear_dir ? R(2,0) : 0.;
-
+      
       gridmap->update_clearance(
           clearance_x,
           clearance_y,
@@ -320,6 +326,8 @@ class ElevationGridmapNode  : public rclcpp::Node
           clearance_dz,
           clearance_thr);
 
+      rclcpp::Time clearance_stamp(msgo->header.stamp);
+      clearance_ts = clearance_stamp.seconds();
     }
 
   public:
@@ -415,6 +423,11 @@ class ElevationGridmapNode  : public rclcpp::Node
       clearance_thr = this->declare_parameter("clearance_thr", 0.5);
       RCLCPP_INFO(this->get_logger(), "clearance_thr: %f", clearance_thr);
       
+      max_clearance_age = this->declare_parameter("max_clearance_age", -1.0);
+      RCLCPP_INFO(this->get_logger(), "max_clearance_age: %lf", max_clearance_age);
+
+      clearance_ts = max_clearance_age < 0 ? 0 : -2*max_clearance_age;
+
       do_clear_dir = this->declare_parameter("do_clear_dir", false);
       RCLCPP_INFO(this->get_logger(), "do_clear_dir: %x", do_clear_dir);
 
