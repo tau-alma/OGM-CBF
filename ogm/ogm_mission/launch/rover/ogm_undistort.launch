@@ -87,6 +87,7 @@
     <param name="cellsize" value="0.05" />
     <param name="height" value="20." />
     <param name="width" value="20." />
+    <param name="discretize_elevimg" value="False" />
     <param name="elevimg_z_res" value="0.005" />
     <param name="clearance_thr" value="1." />
     <param name="do_clear_dir" value="true" />
@@ -114,6 +115,7 @@
     <param name="cellsize" value="0.05" />
     <param name="height" value="20." />
     <param name="width" value="20." />
+    <param name="discretize_elevimg" value="False" />
     <param name="elevimg_z_res" value="0.005" />
     <param name="clearance_thr" value="-1." />
     <param name="do_clear_dir" value="true" />
@@ -129,6 +131,10 @@
     namespace="$(var ns)"
     output="log">
     <param name="use_sim_time" value="$(var use_sim_time)"/>
+    
+    <param name="do_pub_exact" value="True" />
+    <param name="do_pub_vis" value="True" />
+    <param name="vis_scale" value="100.0" />
   </node>
     
 

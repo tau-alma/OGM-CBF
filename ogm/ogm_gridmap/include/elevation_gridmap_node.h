@@ -53,6 +53,7 @@ class ElevationGridmapNode  : public rclcpp::Node
     bool do_pub_occimg;
     bool do_pub_elevimg;
     bool flip_occimg_values;
+    bool discretize_elevimg;
     float elevimg_z_res; 
     bool do_pub_elevgrid_real;
     bool do_pub_elevgrid_vis;
@@ -172,21 +173,38 @@ class ElevationGridmapNode  : public rclcpp::Node
 
     void publish_elevimg(rclcpp::Time& now)
     {
-      std::vector<int8_t> data = gridmap->report_3d_int8(elevimg_z_res, occgrid_vis_z);
-      
-      cv::Mat map(
-        gridmap->get_height(),
-        gridmap->get_width(),
-        CV_8S,
-        data.data()
-        );
+
       cv::Mat img;
-      cv::flip(map, img, 0);
-
       cv_bridge::CvImage cv_bridge_image;
-      cv_bridge_image.encoding = sensor_msgs::image_encodings::MONO8;
-      cv_bridge_image.image = img;
 
+      if (discretize_elevimg)
+      {
+        std::vector<int8_t> data = gridmap->report_3d_int8(elevimg_z_res, occgrid_vis_z);
+        
+        cv::Mat map(
+          gridmap->get_height(),
+          gridmap->get_width(),
+          CV_8S,
+          data.data()
+          );
+        cv::flip(map, img, 0);
+        cv_bridge_image.encoding = sensor_msgs::image_encodings::MONO8;
+      }
+      else
+      {
+        std::vector<float> data = gridmap->report_3d_float(occgrid_vis_z);
+
+        cv::Mat map(
+          gridmap->get_height(),
+          gridmap->get_width(),
+          CV_32FC1,
+          data.data()
+          );
+        cv::flip(map, img, 0);
+        cv_bridge_image.encoding = sensor_msgs::image_encodings::TYPE_32FC1;
+      }
+
+      cv_bridge_image.image = img;
       sensor_msgs::msg::Image msg_img = *(cv_bridge_image.toImageMsg());
 	    msg_img.header.stamp = now;
 	    msg_img.header.frame_id = this->map_frame;
@@ -396,6 +414,9 @@ class ElevationGridmapNode  : public rclcpp::Node
 
       flip_occimg_values = this->declare_parameter("flip_occimg_values", false);
       RCLCPP_INFO(this->get_logger(), "flip_occimg_values: %x", flip_occimg_values);
+
+      discretize_elevimg = this->declare_parameter("discretize_elevimg", true);
+      RCLCPP_INFO(this->get_logger(), "discretize_elevimg: %x", discretize_elevimg);
 
       elevimg_z_res = this->declare_parameter("elevimg_z_res", 0.02);
       RCLCPP_INFO(this->get_logger(), "elevimg_z_res: %f", elevimg_z_res);
