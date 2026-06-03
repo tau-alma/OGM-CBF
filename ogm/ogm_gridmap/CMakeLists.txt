@@ -126,21 +126,6 @@ install(TARGETS
 elevgrid
   DESTINATION lib/${PROJECT_NAME})
 
-add_executable(rutmap src/main_rutmap.cpp)
-target_include_directories(rutmap PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
-ament_target_dependencies(rutmap
-	rclcpp
-	sensor_msgs
-  logging_demo
-  OpenCV
-  cv_bridge
-	)
-install(TARGETS
-  rutmap
-  DESTINATION lib/${PROJECT_NAME})
-
 ament_export_include_directories(include)
 
 ament_package()
