@@ -6,10 +6,9 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
-        - /points_registered1/Status1
         - /points_registered1/Topic1
-        - /gridmap front1
-        - /gridmap front1/Topic1
+        - /gridmap1
+        - /gridmap1/Topic1
       Splitter Ratio: 0.5
     Tree Height: 854
   - Class: rviz_common/Selection
@@ -103,7 +102,7 @@ Visualization Manager:
       Max Intensity: 0.20000000298023224
       Min Color: 0; 0; 0
       Min Intensity: -0.10000000149011612
-      Name: gridmap front
+      Name: gridmap
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 3
@@ -115,7 +114,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Best Effort
-        Value: /ogm/elevation_gridmap_front
+        Value: /ogm/elevation_gridmap
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
@@ -306,7 +305,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 23.826290130615234
+      Distance: 37.06074905395508
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -321,10 +320,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.2805430591106415
+      Pitch: 0.9605429768562317
       Target Frame: base_link
       Value: Orbit (rviz)
-      Yaw: 1.971392273902893
+      Yaw: 1.6213926076889038
     Saved: ~
 Window Geometry:
   Displays:
