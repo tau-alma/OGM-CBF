@@ -45,7 +45,7 @@ def generate_launch_description():
                 {"sync_window" : 1.0},
                 #{"sync_slack" : 0.125},
                 #{"sync_window" : 1.0},
-                {"crop_box_halfsize" : 5.},
+                {"crop_box_halfsize" : 10.},
                 ],
         )
 
@@ -70,6 +70,9 @@ def generate_launch_description():
                 {"do_pub_elevimg" : True},
                 {"elevimg_z_res" : 0.02},
                 {"cellsize" : .1},
+                {"cell_z_var" : 1.},
+                {"cell_sensor_var" : 1.},
+                {"cell_update_var" : True},
                 {"height" : 80.},
                 {"width" : 100.},
                 {"clearance_thr" : 0.0},
