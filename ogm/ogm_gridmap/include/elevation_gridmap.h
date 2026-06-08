@@ -19,7 +19,7 @@ class Cell
     Cell()
     {
       type = UNKNOWN;
-      z = 0.;
+      z = std::nanf("");
     }
 
     void update(float _z)
