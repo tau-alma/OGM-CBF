@@ -20,6 +20,6 @@ To learn more:
 - [Project website][website]
 
 [paper]: https://arxiv.org/abs/2405.10703
-[website]: https://golnazraja.github.io/OGM-CBF-page/
+[website]: https://ogmcbf.github.io/
 
 
