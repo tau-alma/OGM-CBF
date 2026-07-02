@@ -3,11 +3,12 @@
 If you find this code useful, please reference in your paper:
 
 ```
-@article{raja2024safe,
-  title={Safe robot control using occupancy grid map-based control barrier function (ogm-cbf)},
-  author={Raja, Golnaz and M{\"o}kk{\"o}nen, Teemu and Ghabcheloo, Reza},
+@article{raja2026ogmcbf,
+  title={{OGM-CBF}: {O}ccupancy Grid Map-based Control Barrier Function for Safe Mobile Robot Control with Memory of out of View Obstacles},
+  author={Raja, Golnaz and Prágr, Miloš and Kärki, Topi Reino Johannes and Mökkönen, Teemu and Ghabcheloo, Reza},
   journal={arXiv preprint arXiv:2405.10703},
-  year={2024}
+  year={2026},
+  doi={10.48550/arXiv.2405.10703},
 }
 ```
 
