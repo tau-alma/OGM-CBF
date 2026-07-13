@@ -42,13 +42,20 @@ class ElevationGridmapNode  : public rclcpp::Node
     float occgrid_vis_z;
     std::string map_frame;
 
-    float clearance_thr;
+    float clearance_thr_pos_low;
+    float clearance_thr_pos_high;
+    float clearance_thr_dir_low;
+    float clearance_thr_dir_high;
     double max_clearance_age;
     double clearance_ts; 
     
     bool do_update;
     bool do_reset;
+    bool do_clear_pos;
+    bool invert_clear_pos;
     bool do_clear_dir;
+    bool invert_clear_dir;
+
     bool do_pub_occgrid;
     bool do_pub_occimg;
     bool do_pub_elevimg;
@@ -328,21 +335,21 @@ class ElevationGridmapNode  : public rclcpp::Node
           msgo->pose.pose.orientation.z);
       Eigen::Matrix3f R = q.toRotationMatrix();
 
-      float clearance_x = msgo->pose.pose.position.x;
-      float clearance_y = msgo->pose.pose.position.y;
-      float clearance_z = msgo->pose.pose.position.z;
-      float clearance_dx = do_clear_dir ? R(0,0) : 0.;
-      float clearance_dy = do_clear_dir ? R(1,0) : 0.;
-      float clearance_dz = do_clear_dir ? R(2,0) : 0.;
-      
-      gridmap->update_clearance(
-          clearance_x,
-          clearance_y,
-          clearance_z,
-          clearance_dx,
-          clearance_dy,
-          clearance_dz,
-          clearance_thr);
+      float magnitude = msgo->twist.twist.linear.x;
+
+      ClearanceConfig cfg_pos(do_clear_pos, invert_clear_pos, clearance_thr_pos_low, clearance_thr_pos_high);
+      ClearanceConfig cfg_dir(do_clear_dir, invert_clear_dir, clearance_thr_dir_low, clearance_thr_dir_high);
+      Clearance clearance(
+          cfg_pos, cfg_dir,
+          msgo->pose.pose.position.x,
+          msgo->pose.pose.position.y,
+          msgo->pose.pose.position.z,
+          R(0,0)*magnitude,
+          R(1,0)*magnitude,
+          R(2,0)*magnitude
+          );
+
+      gridmap->update_clearance(clearance);
 
       rclcpp::Time clearance_stamp(msgo->header.stamp);
       clearance_ts = clearance_stamp.seconds();
@@ -441,16 +448,34 @@ class ElevationGridmapNode  : public rclcpp::Node
             cell_update_var));
 
 
-      clearance_thr = this->declare_parameter("clearance_thr", 0.5);
-      RCLCPP_INFO(this->get_logger(), "clearance_thr: %f", clearance_thr);
+      clearance_thr_pos_low = this->declare_parameter("clearance_thr_pos_low", 0.5);
+      RCLCPP_INFO(this->get_logger(), "clearance_thr_pos_low: %f", clearance_thr_pos_low);
+      
+      clearance_thr_pos_high = this->declare_parameter("clearance_thr_pos_high", 0.5);
+      RCLCPP_INFO(this->get_logger(), "clearance_thr_pos_high: %f", clearance_thr_pos_high);
+      
+      clearance_thr_dir_low = this->declare_parameter("clearance_thr_dir_low", 0.5);
+      RCLCPP_INFO(this->get_logger(), "clearance_thr_dir_low: %f", clearance_thr_dir_low);
+      
+      clearance_thr_dir_high = this->declare_parameter("clearance_thr_dir_high", 0.5);
+      RCLCPP_INFO(this->get_logger(), "clearance_thr_dir_high: %f", clearance_thr_dir_high);
       
       max_clearance_age = this->declare_parameter("max_clearance_age", -1.0);
       RCLCPP_INFO(this->get_logger(), "max_clearance_age: %lf", max_clearance_age);
 
       clearance_ts = max_clearance_age < 0 ? 0 : -2*max_clearance_age;
 
+      do_clear_pos = this->declare_parameter("do_clear_pos", false);
+      RCLCPP_INFO(this->get_logger(), "do_clear_pos: %x", do_clear_pos);
+
+      invert_clear_pos = this->declare_parameter("invert_clear_pos", false);
+      RCLCPP_INFO(this->get_logger(), "invert_clear_pos: %x", invert_clear_pos);
+
       do_clear_dir = this->declare_parameter("do_clear_dir", false);
       RCLCPP_INFO(this->get_logger(), "do_clear_dir: %x", do_clear_dir);
+
+      invert_clear_dir = this->declare_parameter("invert_clear_dir", false);
+      RCLCPP_INFO(this->get_logger(), "invert_clear_dir: %x", invert_clear_dir);
 
       pub_occgrid = this->create_publisher<nav_msgs::msg::OccupancyGrid>(
           "occupancy_gridmap",

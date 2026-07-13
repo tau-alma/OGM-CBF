@@ -5,6 +5,8 @@
 #include <pcl/point_types.h>
 
 #include <cmath>
+#include "pt_clearance.h"
+
 
 class Cell
 {
@@ -121,9 +123,8 @@ class ElevationGridmap
 
     Eigen::Matrix<KalmanCellOccupancy, Eigen::Dynamic, Eigen::Dynamic> gridmap;
 
-    float clearance_x, clearance_y, clearance_z, clearance_dx, clearance_dy, clearance_dz;
-    float clearance_thr;
-    
+    Clearance clearance;
+
     float cell_z_var;
     float cell_sensor_var;
     float cell_system_var;
@@ -169,24 +170,6 @@ class ElevationGridmap
       }
       return r;
     }
-    
-    bool is_in_clearance(pcl::PointXYZ& p)
-    {
-      float dst_sign = clearance_thr < 0 ? -1 : 1;
-      
-      float dst_abs = std::sqrt(
-          (clearance_x - p.x)*(clearance_x - p.x) + 
-          (clearance_y - p.y)*(clearance_y - p.y) + 
-          (clearance_z - p.z)*(clearance_z - p.z));
-
-      float dst_vec = 
-        (p.x - clearance_x)*clearance_dx +
-        (p.y - clearance_y)*clearance_dy +
-        (p.z - clearance_z)*clearance_dz;
-
-      if (clearance_dx == 0. && clearance_dy == 0. && clearance_dz == 0.) return dst_abs*dst_sign < clearance_thr*dst_sign;
-      else return dst_vec*dst_sign < clearance_thr*dst_sign;
-    }
 
   public:  
 
@@ -195,18 +178,9 @@ class ElevationGridmap
       gridmap = Eigen::Matrix<KalmanCellOccupancy, Eigen::Dynamic, Eigen::Dynamic>::Constant(width, height, KalmanCellOccupancy());
     }
 
-    void update_clearance(
-        float _clearance_x, float _clearance_y, float _clearance_z,
-        float _clearance_dx, float _clearance_dy, float _clearance_dz,
-        float _clearance_thr)
+    void update_clearance(Clearance& _clearance)
     {
-      clearance_x = _clearance_x;
-      clearance_y = _clearance_y;
-      clearance_z = _clearance_z;
-      clearance_dx = _clearance_dx;
-      clearance_dy = _clearance_dy;
-      clearance_dz = _clearance_dz;
-      clearance_thr = _clearance_thr;
+      clearance = _clearance;
     }
 
     void update(pcl::PointCloud<pcl::PointXYZ>& xyz)
@@ -223,7 +197,7 @@ class ElevationGridmap
         std::tie(i, j) = coord2sub(pt.x, pt.y);
         //RCLCPP_INFO(this->get_logger(), "%d %d %f", i, j, pt.z);
         if (is_in_bounds(i, j) 
-	          && !is_in_clearance(pt)
+	          && !clearance.is_in_clearance(pt)
 	          && (z < crop_z_max))
         {
           gridmap(i, j).check_kalman_init(cell_z_var, cell_sensor_var, cell_system_var, cell_update_var);
@@ -416,14 +390,6 @@ class ElevationGridmap
    
       pt_step = _pt_step;
 
-      clearance_x = 1e6;
-      clearance_y = 1e6;
-      clearance_z = 1e6;
-      clearance_dx = 0.;
-      clearance_dy = 0.;
-      clearance_dz = 0.;
-      clearance_thr = 0.;
-      
       cell_z_var = _cell_z_var;
       cell_sensor_var = _cell_sensor_var;
       cell_system_var = _cell_system_var;
