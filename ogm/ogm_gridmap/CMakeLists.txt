@@ -1,8 +1,9 @@
+add_definitions(-D_GLIBCXX_USE_CXX11_ABI=1)
 cmake_minimum_required(VERSION 3.8)
 project(ogm_gridmap)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
+  add_compile_options(-Wall -Wextra -Wpedantic -Wabi-tag)
 endif()
 
 
@@ -24,6 +25,8 @@ find_package(pcl_conversions REQUIRED)
 find_package(PCL 1.10 REQUIRED)
 find_package(pcl_ros REQUIRED)
 find_package(logging_demo REQUIRED)
+find_package(ryml REQUIRED)
+message(STATUS "Found ryml: ${ryml_DIR}")
 
 include_directories( ${OpenCV_INCLUDE_DIRS} )
 
@@ -125,6 +128,23 @@ ament_target_dependencies(elevgrid
 install(TARGETS
 elevgrid
   DESTINATION lib/${PROJECT_NAME})
+
+add_executable(elevgrid_tool src/main_elevation_gridmap_tool.cpp)
+target_include_directories(elevgrid_tool PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_link_libraries(elevgrid_tool
+  ${OpenCV_LIBRARIES}
+  ${cv_bridge_LIBRARIES}
+  ${PCL_LIBRARIES}
+  ${pcl_conversions_LIBRARIES}
+  cv_bridge::cv_bridge
+  ryml::ryml
+	)
+install(TARGETS
+elevgrid_tool
+  DESTINATION lib/${PROJECT_NAME})
+
 
 ament_export_include_directories(include)
 
