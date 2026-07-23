@@ -291,12 +291,10 @@ class ElevationGridmapNode  : public rclcpp::Node
 
       auto wall_start = std::chrono::high_resolution_clock::now();
 
-
       if (do_reset)
       {
         gridmap->reset();
       }
-
 
       auto wall_reset = std::chrono::high_resolution_clock::now();
       RCLCPP_DEBUG(this->get_logger(), "wall-callback reset: %lf ms",
